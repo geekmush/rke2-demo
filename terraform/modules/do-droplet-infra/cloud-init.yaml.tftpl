@@ -1,0 +1,49 @@
+#cloud-config
+# Minimal RKE2-prereq cloud-init for ${hostname}.
+# Intentionally idempotent and re-runnable: an Ansible role may replay these
+# steps later without harm.
+#
+# Scope is OS prereqs ONLY — no RKE2 install, no package bloat. Anything past
+# this belongs in an Ansible role.
+
+hostname: ${hostname}
+preserve_hostname: false
+
+write_files:
+  - path: /etc/modules-load.d/k8s.conf
+    permissions: '0644'
+    content: |
+      br_netfilter
+      overlay
+
+  - path: /etc/sysctl.d/99-k8s.conf
+    permissions: '0644'
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward                 = 1
+
+  # SSH hardening — key-only, no password auth, no root password login.
+  # Drop-in file so we don't fight cloud-init's own sshd_config edits.
+  - path: /etc/ssh/sshd_config.d/10-rke2-demo.conf
+    permissions: '0644'
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin prohibit-password
+      KbdInteractiveAuthentication no
+
+runcmd:
+  # Disable swap immediately and persistently.
+  - swapoff -a
+  - sed -ri 's/^([^#].*\s+swap\s+.*)$/# \1/' /etc/fstab
+
+  # Load kernel modules now (cloud-init does this on next boot via modules-load.d,
+  # but we want them present on first boot too).
+  - modprobe br_netfilter
+  - modprobe overlay
+
+  # Apply sysctls without reboot.
+  - sysctl --system
+
+  # Re-load sshd so the drop-in takes effect.
+  - systemctl reload ssh || systemctl reload sshd || true
