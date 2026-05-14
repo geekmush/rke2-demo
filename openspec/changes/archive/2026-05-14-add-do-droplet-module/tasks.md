@@ -60,8 +60,8 @@ Implementation order. Each task is small enough to be a discrete commit. Check o
 
 ## Close-out
 
-- [ ] 30. Open PR. Title: `Add OpenTofu module for DigitalOcean droplet infra (closes #1)`. Body references `openspec/changes/add-do-droplet-module/` and includes the `make plan` output as a collapsed block.
+- [x] 30. Open PR. Title: `Add OpenTofu module for DigitalOcean droplet infra (closes #1)`. Body references `openspec/changes/add-do-droplet-module/` and includes the `make plan` output as a collapsed block.
 - [x] 31. Walk the secrets safe-staging checklist from `docs/runbooks/secrets.md` before requesting review.
-- [ ] 32. Merge. Issue #1 closes automatically via the PR keyword.
-- [ ] 33. File the follow-up issue: "Move DO test env to remote state (DO Spaces)" — milestone Phase 1, labels `type:task, phase-1, area:tofu, priority:normal`.
-- [ ] 34. Move this change directory: `openspec/changes/add-do-droplet-module/` → `openspec/changes/archive/<date>-add-do-droplet-module/` per OpenSpec workflow.
+- [x] 32. Merge. Issue #1 closes automatically via the PR keyword.
+- [x] 33. File the follow-up issue: "Move DO test env to remote state (DO Spaces)" — milestone Phase 1, labels `type:task, phase-1, area:tofu, priority:normal`.
+- [x] 34. Move this change directory: `openspec/changes/add-do-droplet-module/` → `openspec/changes/archive/<date>-add-do-droplet-module/` per OpenSpec workflow.

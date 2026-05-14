@@ -1,8 +1,8 @@
 # Proposal — add-do-droplet-module
 
-**Tracking issue:** [#1](https://github.com/geekmush/rke2-demo/issues/1)
+**Tracking issue:** [#1](https://github.com/geekmush/rke2-demo/issues/1) (closed)
 **Phase:** 1 — DO bring-up
-**Status:** proposed
+**Status:** archived 2026-05-14 — shipped via [PR #2](https://github.com/geekmush/rke2-demo/pull/2). Follow-up: [#3](https://github.com/geekmush/rke2-demo/issues/3) (remote state).
 
 ## Why
 
