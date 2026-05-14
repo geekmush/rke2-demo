@@ -1,0 +1,52 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Secrets / local state
+*.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+known_hosts
+
+# OpenTofu / Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ansible
+*.retry
+ansible/.vault_pass
+ansible/inventory/host_vars/*.local.yml
+ansible/inventory/group_vars/*.local.yml
+
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Kube
+kubeconfig*
+*.kubeconfig
+
+# Node (for OpenSpec tooling)
+node_modules/
+npm-debug.log*

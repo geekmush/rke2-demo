@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm search *)",
+      "Bash(npm view *)",
+      "Bash(npx --yes @fission-ai/openspec@latest init)",
+      "Bash(git add *)"
+    ]
+  }
+}

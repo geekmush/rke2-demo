@@ -1,0 +1,2 @@
+- [No AI attribution in git or GitHub](memory/feedback_no_ai_attribution.md) — never add Co-Authored-By Claude or "Generated with Claude Code" to commits, PRs, or GitHub comments.
+- [Keep auto-memory local to the repo](memory/feedback_memory_location.md) — write memories to repo .claude/memory/, not the global projects path.
