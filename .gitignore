@@ -21,12 +21,28 @@ known_hosts
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
+!*.enc.tfvars
 crash.log
 crash.*.log
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+
+# SOPS / secrets — only *.enc.* files are allowed in git
+secrets/
+secrets.yaml
+secrets.yml
+secrets.json
+secrets.env
+!*.enc.yaml
+!*.enc.yml
+!*.enc.json
+!*.enc.env
+# Local SOPS age key material (must never leave the operator workstation)
+age.key
+*.age
+keys.txt
 
 # Ansible
 *.retry
@@ -50,3 +66,7 @@ kubeconfig*
 # Node (for OpenSpec tooling)
 node_modules/
 npm-debug.log*
+
+# Claude Code per-user state (memory under .claude/memory/ IS committed by policy)
+.claude/settings.local.json
+.claude/worktrees/

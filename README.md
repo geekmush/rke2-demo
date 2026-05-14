@@ -24,7 +24,14 @@ devopscoop's templates cover FluxCD-managed cluster apps but do not yet ship an 
 - **Ansible** — config management under [`ansible/`](ansible/)
 - **uv** — Python environment and script runner
 - **OpenSpec** — change proposals and specs under `openspec/`
+- **SOPS + age** — secrets encryption; rules in [`.sops.yaml`](.sops.yaml). Encrypted files use the `*.enc.<ext>` convention. No plaintext secrets in git, ever.
 - **FluxCD** — end-state app delivery (downstream of this repo)
+
+## Work tracking
+
+- **GitHub Issues** on `geekmush/rke2-demo` — backlog, bugs, milestones.
+- **OpenSpec** under `openspec/changes/<name>/` — per-change proposals, design, tasks; each links to its tracking Issue.
+- Production environment uses **Gitea**, which is GitHub-import compatible — anything filed here is portable.
 
 ## Layout
 

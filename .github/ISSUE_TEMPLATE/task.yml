@@ -1,0 +1,70 @@
+name: Task
+description: A unit of planned work (module, role, runbook, doc, refactor).
+title: "[task] "
+labels: ["type:task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for planned work that produces an artifact (Tofu module, Ansible role, runbook, diagram, etc.). For bugs use the Bug template. For larger design-shaped changes, also open an OpenSpec change under `openspec/changes/<name>/` and link it below.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One paragraph — what is this task and why does it exist?
+      placeholder: e.g. "Provision DigitalOcean droplets, VPC, and firewall as the test-phase substrate for RKE2."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What's in scope. What's explicitly out of scope (later issues).
+      value: |
+        **In scope:**
+        -
+
+        **Out of scope (separate issues):**
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Concrete, checkable outcomes. The issue closes when these are all true.
+      value: |
+        - [ ]
+        - [ ]
+        - [ ] Docs updated (README / runbook / diagram per groundrule #7)
+    validations:
+      required: true
+  - type: input
+    id: openspec
+    attributes:
+      label: OpenSpec change (optional)
+      description: Path to the OpenSpec change for this task, if one exists.
+      placeholder: openspec/changes/<name>/
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - phase-1 — DO bring-up (no Longhorn, no apps)
+        - phase-2 — Storage (Longhorn on dedicated disks)
+        - phase-3 — GitOps (FluxCD + devopscoop template)
+        - phase-4 — Production (bare metal)
+        - phase-5 — Upstream contribution
+        - cross-phase / tooling
+    validations:
+      required: true
+  - type: checkboxes
+    id: groundrules
+    attributes:
+      label: Groundrule check
+      description: Confirm the task design respects project groundrules.
+      options:
+        - label: No plaintext secrets in any committed file (SOPS-encrypted `*.enc.*` only — groundrule #9)
+        - label: IaC under `terraform/`, OpenTofu only (groundrule #2)
+        - label: Deploy steps are Ansible-maintainable (groundrule #3)
+        - label: Docs updated as part of this work (groundrule #7)

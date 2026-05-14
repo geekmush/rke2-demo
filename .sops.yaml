@@ -1,0 +1,20 @@
+# SOPS encryption rules for rke2-demo.
+#
+# Encrypted files use the *.enc.<ext> convention and live next to what they
+# configure (e.g. terraform/secrets.enc.tfvars, ansible/group_vars/all/secrets.enc.yaml).
+#
+# Adding a new recipient:
+#   1. Append their age public key to the `age:` string (comma-separated) in the
+#      matching creation_rule. SOPS expects a comma-separated string, not a YAML list.
+#   2. Re-encrypt every affected file:  sops updatekeys path/to/file.enc.yaml
+#   3. Commit the updated *.enc.* files.
+#
+# Decryption keys are operator-local — typically ~/.config/sops/age/keys.txt
+# (or %APPDATA%\sops\age\keys.txt on Windows). Never commit private keys.
+#
+creation_rules:
+  - path_regex: \.enc\.(ya?ml|json|env|tfvars)$
+    encrypted_regex: '^(data|stringData|.*[Pp]assword|.*[Ss]ecret|.*[Tt]oken|.*[Kk]ey)$'
+    # Comma-separate additional operator keys: "age1...,age1..."
+    # geekmush — primary operator
+    age: age1s8ed4qr4k7hvwu6mx5z80prurzz2wcq4gk2ujyh8w75ssaxy44xq8pzjdk

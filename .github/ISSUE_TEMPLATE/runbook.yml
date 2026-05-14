@@ -1,0 +1,33 @@
+name: Runbook / docs
+description: A documentation, runbook, or diagram deliverable.
+title: "[docs] "
+labels: ["type:docs"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What needs to be documented?
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Deliverable type
+      options:
+        - Runbook (operational procedure under docs/runbooks/)
+        - Architecture / process diagram (Mermaid under docs/diagrams/)
+        - README update
+        - CLAUDE.md groundrule change
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] File(s) created at correct path
+        - [ ] Linked from README or relevant runbook index
+        - [ ] Diagrams render in GitHub-flavored Markdown (Mermaid)
+    validations:
+      required: true

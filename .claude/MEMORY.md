@@ -1,2 +1,4 @@
 - [No AI attribution in git or GitHub](memory/feedback_no_ai_attribution.md) — never add Co-Authored-By Claude or "Generated with Claude Code" to commits, PRs, or GitHub comments.
 - [Keep auto-memory local to the repo](memory/feedback_memory_location.md) — write memories to repo .claude/memory/, not the global projects path.
+- [Secrets via SOPS, never plaintext in git](memory/feedback_secrets_sops.md) — all secrets are SOPS-age encrypted *.enc.* files; scan diffs for plaintext credentials before staging.
+- [Work tracking — GitHub Issues, Gitea-compatible](memory/reference_work_tracking.md) — GitHub Issues are the active backlog; OpenSpec handles per-change design; Gitea import is the production target.

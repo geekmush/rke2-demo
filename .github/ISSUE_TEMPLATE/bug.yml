@@ -1,0 +1,51 @@
+name: Bug
+description: Something is broken or behaves unexpectedly.
+title: "[bug] "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What's wrong?
+      description: One paragraph describing the bad behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Steps to reproduce. Include the exact commands, branch, and any relevant `tofu` / `ansible` invocations.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+      value: |
+        **Expected:**
+
+        **Actual:**
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Phase, provider, relevant tool versions, droplet sizes, etc.
+      placeholder: |
+        - Phase: phase-1 (DO bring-up)
+        - OpenTofu:
+        - Ansible:
+        - RKE2:
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Paste error output. **Scrub any secrets, tokens, IPs you don't want public.**
+      render: shell
