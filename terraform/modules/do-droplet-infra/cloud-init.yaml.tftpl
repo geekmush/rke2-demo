@@ -3,7 +3,7 @@
 # Intentionally idempotent and re-runnable: an Ansible role may replay these
 # steps later without harm.
 #
-# Scope is OS prereqs ONLY — no RKE2 install, no package bloat. Anything past
+# Scope is OS prereqs ONLY -- no RKE2 install, no package bloat. Anything past
 # this belongs in an Ansible role.
 
 hostname: ${hostname}
@@ -23,7 +23,7 @@ write_files:
       net.bridge.bridge-nf-call-ip6tables = 1
       net.ipv4.ip_forward                 = 1
 
-  # SSH hardening — key-only, no password auth, no root password login.
+  # SSH hardening -- key-only, no password auth, no root password login.
   # Drop-in file so we don't fight cloud-init's own sshd_config edits.
   - path: /etc/ssh/sshd_config.d/10-rke2-demo.conf
     permissions: '0644'
