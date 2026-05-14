@@ -16,7 +16,7 @@ known_hosts
 
 # OpenTofu / Terraform
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl IS committed — pins provider hashes for reproducibility.
 *.tfstate
 *.tfstate.*
 *.tfvars
