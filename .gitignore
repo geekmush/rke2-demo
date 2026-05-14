@@ -16,8 +16,12 @@ known_hosts
 
 # OpenTofu / Terraform
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl IS committed — pins provider hashes for reproducibility.
 *.tfstate
+# Saved plan files embed decrypted variable values (including SOPS-sourced
+# secrets). Never commit them. Operators should delete them after apply.
+tfplan*.bin
+*.tfplan
 *.tfstate.*
 *.tfvars
 !*.tfvars.example

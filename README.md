@@ -55,7 +55,12 @@ devopscoop's templates cover FluxCD-managed cluster apps but do not yet ship an 
 
 ## Getting started
 
-Nothing to run yet. Next milestone: an OpenTofu module for DO droplets — VPC, firewall, SSH key resource, and minimal cloud-init (swap off, kernel modules, sysctls). RKE2 install lands in a later pass.
+Phase 1 substrate (VPC + firewall + SSH key + 6 droplets + cloud-init) is provisioned with the OpenTofu module under [`terraform/modules/do-droplet-infra/`](terraform/modules/do-droplet-infra/), consumed by the root env at [`terraform/environments/do-test/`](terraform/environments/do-test/).
+
+End-to-end operator procedure: [`docs/runbooks/do-bring-up.md`](docs/runbooks/do-bring-up.md).
+Network topology: [`docs/diagrams/do-network.md`](docs/diagrams/do-network.md).
+
+RKE2, Rancher, Longhorn, and FluxCD land in subsequent changes.
 
 ## Contributing
 
