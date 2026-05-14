@@ -2,3 +2,4 @@
 - [Keep auto-memory local to the repo](memory/feedback_memory_location.md) — write memories to repo .claude/memory/, not the global projects path.
 - [Secrets via SOPS, never plaintext in git](memory/feedback_secrets_sops.md) — all secrets are SOPS-age encrypted *.enc.* files; scan diffs for plaintext credentials before staging.
 - [Work tracking — GitHub Issues, Gitea-compatible](memory/reference_work_tracking.md) — GitHub Issues are the active backlog; OpenSpec handles per-change design; Gitea import is the production target.
+- [Prefer multiple focused commits per PR](memory/feedback_commit_style.md) — split non-trivial PRs into logical commits with descriptive bodies; don't squash unless asked.
