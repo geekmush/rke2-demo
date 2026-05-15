@@ -1,6 +1,12 @@
 ---
 # Non-secret defaults applied to every host.
-# Tokens and other secrets live in secrets.enc.yaml (SOPS-encrypted).
+# Tokens and other secrets live in secrets.yaml (SOPS-encrypted) under
+# the devopscoop/fluxcd-template convention.
+
+# Cluster identity. Used for the kubeconfig path, will also feed downstream
+# Flux configuration. Stays as `rke2-demo` for this test environment; Phase
+# 4 (bare metal) introduces a different cluster name.
+cluster_name: rke2-demo
 
 # RKE2 release. Pinned to the current stable channel as of 2026-05-14.
 # Update by checking https://update.rke2.io/v1-release/channels (stable).
@@ -36,7 +42,7 @@ kubelet_port:        10250
 # `devopscoop/fluxcd-template`'s deploy.sh hardcodes
 # (KUBECONFIG="${HOME}/.kube/${cluster_name}") so Phase 3 bootstrap
 # reuses the same file.
-operator_kubeconfig_path: "{{ lookup('env', 'HOME') }}/.kube/rke2-demo"
+operator_kubeconfig_path: "{{ lookup('env', 'HOME') }}/.kube/{{ cluster_name }}"
 
 # Override RKE2's default cluster (pod) and service CIDRs. The defaults are
 # 10.42.0.0/16 and 10.43.0.0/16 respectively, which overlap the do-test
