@@ -1,0 +1,155 @@
+---
+# Bootstrap-vs-join logic: probe the LB supervisor endpoint. If any CP is
+# already healthy behind the LB, the cluster exists -- this host joins.
+# If no backend is healthy (probe times out / non-200), this host is part
+# of a fresh bring-up; the FIRST CP in inventory then inits the cluster,
+# and the others wait their turn (the play uses serial: 1).
+#
+# Probing per-host is fine -- the LB result will flip from "no cluster"
+# to "cluster up" exactly once during the first bring-up, between cp-01
+# finishing init and cp-02 starting.
+
+- name: check for existing etcd state on this host
+  ansible.builtin.stat:
+    path: /var/lib/rancher/rke2/server/db/etcd
+  register: rke2_etcd_dir
+
+- name: probe LB supervisor (does the cluster already exist?)
+  ansible.builtin.uri:
+    url: "https://{{ cp_endpoint }}:{{ rke2_supervisor_port }}/ping"
+    validate_certs: false
+    timeout: 5
+    status_code: [200]
+  register: rke2_supervisor_probe
+  failed_when: false
+  changed_when: false
+  check_mode: false
+
+# Bootstrap-vs-join logic. Only the first CP in inventory can ever set
+# cluster-init: true. For that host:
+#   - If etcd state already exists locally, keep cluster-init: true (we are
+#     simply re-running on a host that previously bootstrapped; flipping
+#     to `server:` here would force a needless service restart).
+#   - Else, if the LB probe shows no cluster is up anywhere, this is a
+#     fresh bring-up; init.
+#   - Else, the LB has healthy backends but our local etcd is gone -- a
+#     re-rolled cp-01 joining an existing cluster. Use server:.
+- name: decide bootstrap vs join
+  ansible.builtin.set_fact:
+    rke2_should_init: >-
+      {{
+        inventory_hostname == groups['rke2_servers'][0]
+        and (
+          rke2_etcd_dir.stat.exists
+          or (rke2_supervisor_probe.status | default(0)) != 200
+        )
+      }}
+
+- name: ensure /etc/rancher/rke2 exists
+  ansible.builtin.file:
+    path: /etc/rancher/rke2
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: write rke2 server config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    owner: root
+    group: root
+    mode: '0600'
+  notify: restart rke2-server
+
+- name: check whether rke2 is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/rke2
+  register: rke2_binary
+
+- name: install rke2 (pinned version)
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      curl -sfL https://get.rke2.io \
+        | INSTALL_RKE2_VERSION="{{ rke2_version }}" \
+          INSTALL_RKE2_CHANNEL="{{ rke2_channel }}" \
+          INSTALL_RKE2_TYPE=server \
+          sh -
+    creates: /usr/local/bin/rke2
+    executable: /bin/bash
+  when: not rke2_binary.stat.exists
+
+- name: enable rke2-server.service
+  ansible.builtin.systemd:
+    name: rke2-server.service
+    enabled: true
+    daemon_reload: true
+
+# Flush handlers BEFORE starting the service so a config change triggers a
+# restart on first start, not on the next play.
+- name: flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: start rke2-server.service
+  ansible.builtin.systemd:
+    name: rke2-server.service
+    state: started
+
+- name: wait for RKE2 supervisor locally
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ rke2_supervisor_port }}"
+    delay: 5
+    timeout: 300
+
+- name: wait for kube-apiserver to respond
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ kube_apiserver_port }}/livez"
+    validate_certs: false
+    status_code: [200, 401, 403]
+  register: rke2_apiserver_health
+  until: rke2_apiserver_health.status in [200, 401, 403]
+  retries: 60
+  delay: 5
+  # 401/403 from /livez means the apiserver is up and TLS handshake works,
+  # it just doesn't accept anonymous requests (RKE2 disables anon by default,
+  # which is correct). The on-host kubeconfig with admin cert reaches the
+  # full healthcheck once we extract it.
+
+# --- Kubeconfig retrieval: bootstrap CP only, once. ---
+
+- name: fetch kubeconfig from bootstrap CP
+  ansible.builtin.slurp:
+    src: /etc/rancher/rke2/rke2.yaml
+  register: rke2_kubeconfig_raw
+  when: inventory_hostname == groups['rke2_servers'][0]
+
+- name: ensure operator kubeconfig directory exists locally
+  ansible.builtin.file:
+    path: "{{ operator_kubeconfig_path | dirname }}"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  become: false
+  when: inventory_hostname == groups['rke2_servers'][0]
+
+- name: write operator kubeconfig pointing at localhost (SSH tunnel target)
+  ansible.builtin.copy:
+    content: >-
+      {{
+        rke2_kubeconfig_raw.content
+        | b64decode
+        | regex_replace('server: https://[0-9.]+:[0-9]+',
+                        'server: https://127.0.0.1:' + (kube_apiserver_port | string))
+      }}
+    dest: "{{ operator_kubeconfig_path }}"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  when: inventory_hostname == groups['rke2_servers'][0]
+  # The CP load balancer is INTERNAL (VPC-only) -- the operator's kubeconfig
+  # can't reach it directly. The runbook + ansible/scripts/kube-tunnel.sh
+  # establish an SSH tunnel that forwards localhost:6443 through any healthy
+  # CP to the internal LB's VPC IP. RKE2's apiserver cert includes 127.0.0.1
+  # in tls-san by default, so localhost-pointed kubectl works.

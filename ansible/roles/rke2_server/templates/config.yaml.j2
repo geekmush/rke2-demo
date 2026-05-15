@@ -1,0 +1,40 @@
+{# Rendered by Ansible (rke2_server role). Do not hand-edit -- changes are #}
+{# clobbered on the next play run. Permissions enforced by the parent task: #}
+{# 0600 root:root. Ansible defaults trim_blocks and lstrip_blocks are ON,   #}
+{# so plain {% %} tags here behave as one expects (block tags do not emit   #}
+{# their own newlines, body content does). Do NOT add `-` chomp modifiers. #}
+{% set tls_sans = [cp_endpoint]
+   + (groups['rke2_servers'] | map('extract', hostvars, 'private_ip')   | list)
+   + (groups['rke2_servers'] | map('extract', hostvars, 'ansible_host') | list)
+   + rke2_extra_tls_sans
+%}
+token: "{{ rke2_server_token }}"
+agent-token: "{{ rke2_agent_token }}"
+
+node-ip: {{ private_ip }}
+advertise-address: {{ private_ip }}
+
+# Pod and service CIDRs pinned away from the VPC range (10.42.0.0/20) to keep
+# the CNI's pod-network routes from shadowing VPC routes in the kernel.
+cluster-cidr: "{{ rke2_cluster_cidr }}"
+service-cidr: "{{ rke2_service_cidr }}"
+
+tls-san:
+{% for san in tls_sans | unique %}
+  - "{{ san }}"
+{% endfor %}
+
+disable:
+{% for c in rke2_disable %}
+  - {{ c }}
+{% endfor %}
+
+{# Bootstrap vs join: only the first CP in inventory inits a cluster, and  #}
+{# only when the LB-probe at play-start showed no existing supervisor.     #}
+{% if rke2_should_init | bool and inventory_hostname == groups['rke2_servers'][0] %}
+cluster-init: true
+{% else %}
+server: "https://{{ cp_endpoint }}:{{ rke2_supervisor_port }}"
+{% endif %}
+
+# CNI: default (flannel + 8472/udp open in the DO firewall). Override here if changed.

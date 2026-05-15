@@ -16,7 +16,7 @@ ssh_pubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... operator@workstation"
 # Optional overrides (defaults shown):
 # project_name    = "rke2-demo"        # resource-name prefix in DO
 # region          = "nyc3"
-# vpc_cidr        = "10.42.0.0/20"
+# vpc_cidr        = "10.42.0.0/20"   # overrides default; RKE2 pod/service CIDRs are remapped in ansible/inventory/group_vars/all/main.yml
 # cp_count        = 3
 # cp_size         = "s-2vcpu-4gb"
 # worker_count    = 3
@@ -28,3 +28,9 @@ ssh_pubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... operator@workstation"
 # Narrow public SSH exposure to specific CIDRs if you want (key-only is
 # enforced in sshd regardless). Default is world-reachable per the access model.
 # allowed_ssh_cidrs = ["198.51.100.7/32"]
+
+# The CP load balancer is INTERNAL (no public IP). Operator kube API access
+# is via SSH tunnel through any healthy CP -- see docs/runbooks/rke2-install.md
+# and ansible/scripts/kube-tunnel.sh. Future state uses a Twingate connector
+# inside the VPC. No `kube_api_allowed_cidrs` variable; nothing public to
+# allowlist.

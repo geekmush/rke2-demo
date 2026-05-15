@@ -1,0 +1,49 @@
+---
+- name: ensure /etc/rancher/rke2 exists
+  ansible.builtin.file:
+    path: /etc/rancher/rke2
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: write rke2 agent config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    owner: root
+    group: root
+    mode: '0600'
+  notify: restart rke2-agent
+
+- name: check whether rke2 is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/rke2
+  register: rke2_binary
+
+- name: install rke2 (pinned version, agent flavor)
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      curl -sfL https://get.rke2.io \
+        | INSTALL_RKE2_VERSION="{{ rke2_version }}" \
+          INSTALL_RKE2_CHANNEL="{{ rke2_channel }}" \
+          INSTALL_RKE2_TYPE=agent \
+          sh -
+    creates: /usr/local/bin/rke2
+    executable: /bin/bash
+  when: not rke2_binary.stat.exists
+
+- name: enable rke2-agent.service
+  ansible.builtin.systemd:
+    name: rke2-agent.service
+    enabled: true
+    daemon_reload: true
+
+- name: flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: start rke2-agent.service
+  ansible.builtin.systemd:
+    name: rke2-agent.service
+    state: started

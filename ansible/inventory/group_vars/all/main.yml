@@ -1,0 +1,46 @@
+---
+# Non-secret defaults applied to every host.
+# Tokens and other secrets live in secrets.enc.yaml (SOPS-encrypted).
+
+# RKE2 release. Pinned to the current stable channel as of 2026-05-14.
+# Update by checking https://update.rke2.io/v1-release/channels (stable).
+rke2_version: "v1.35.4+rke2r1"
+rke2_channel: "stable"
+
+# RKE2 addons to skip. FluxCD installs ingress in Phase 3, so we don't
+# want RKE2's bundled rke2-ingress-nginx running here.
+rke2_disable:
+  - rke2-ingress-nginx
+
+# tls-san list assembled at templating time from cp_endpoint (LB IP),
+# all CP private IPs, and all CP public IPs. The RKE2 apiserver cert
+# is reissued every config change, so updates to this list take effect
+# on rke2-server restart.
+#
+# rke2_extra_tls_sans is a hook for adding stable DNS names later
+# (e.g. rke2.example.com) without touching the role.
+rke2_extra_tls_sans: []
+
+# Port numbers as named constants so the same values can be referenced
+# from Tofu firewall rules and Ansible config templates without drift.
+# These are RKE2 defaults; do not change unless you also change them
+# in the DO firewall module.
+rke2_supervisor_port: 9345
+kube_apiserver_port: 6443
+kubelet_port:        10250
+
+# Where on the operator workstation to deposit the rewritten kubeconfig
+# after the first CP comes up. `playbook_dir` is .../ansible/playbooks at
+# play time; the `../` puts the kubeconfig under .../ansible/artifacts/,
+# which is what `make kubeconfig` and the runbook reference.
+operator_kubeconfig_path: "{{ playbook_dir }}/../artifacts/kubeconfig"
+
+# Override RKE2's default cluster (pod) and service CIDRs. The defaults are
+# 10.42.0.0/16 and 10.43.0.0/16 respectively, which overlap the do-test
+# VPC at 10.42.0.0/20 -- the CNI's pod-network routes shadow the VPC routes
+# inside the kernel routing table and inter-droplet VPC traffic breaks with
+# `RTNETLINK answers: Invalid argument`. Pinning to 10.244.0.0/16 / 10.245.0.0/16
+# keeps both ranges well clear of the VPC. We can't simply move the VPC --
+# DO's per-region "default VPC" rule blocks deletion and demotion of our VPC.
+rke2_cluster_cidr: "10.244.0.0/16"
+rke2_service_cidr: "10.245.0.0/16"

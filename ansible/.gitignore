@@ -1,0 +1,11 @@
+# Generated inventory — produced from `tofu output -json` by scripts/render-inventory.py.
+inventory/generated.yaml
+
+# Operator-local credentials and run artifacts.
+artifacts/
+
+# Ansible Galaxy collection cache (if anyone uses --target ./.galaxy-cache).
+.galaxy-cache/
+
+# Ansible retry files (also disabled in ansible.cfg, but belt-and-braces).
+*.retry

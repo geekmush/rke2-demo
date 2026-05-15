@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: rke2_agent
+  author: rke2-demo
+  description: Install and configure the RKE2 agent (worker) on a node. Joins via the LB-fronted supervisor endpoint.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []
