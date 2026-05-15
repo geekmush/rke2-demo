@@ -1,0 +1,18 @@
+---
+collections:
+  # SOPS-encrypted group_vars/host_vars decryption (vars plugin) and the
+  # `community.sops.load_vars` task module. Required by ansible.cfg's
+  # vars_plugins_enabled.
+  - name: community.sops
+    version: ">=2.0.0,<3.0.0"
+
+  # community.general carries terraform inventory plugin, jmespath helpers,
+  # and assorted utility modules. We use `community.general.timezone` and
+  # other small bits in the roles.
+  - name: community.general
+    version: ">=9.0.0"
+
+  # ansible.posix for sysctl, mount, firewalld-adjacent modules used by
+  # rke2_common's idempotent OS-prereq replay.
+  - name: ansible.posix
+    version: ">=1.5.0"
