@@ -1,8 +1,8 @@
 # Proposal — add-do-block-storage
 
-**Tracking issue:** [#11](https://github.com/geekmush/rke2-demo/issues/11)
+**Tracking issue:** [#11](https://github.com/geekmush/rke2-demo/issues/11) (closed)
 **Phase:** 2 — Storage (Longhorn)
-**Status:** proposed
+**Status:** archived 2026-05-15 -- shipped via [PR #12](https://github.com/geekmush/rke2-demo/pull/12).
 
 ## Why
 
