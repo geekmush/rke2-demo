@@ -70,3 +70,14 @@ variable "do_project_name" {
   type        = string
   default     = null
 }
+
+variable "longhorn_volume_size_gb" {
+  description = "Size (GB) of each per-worker DigitalOcean Block Storage volume staged for Longhorn. One volume per worker; volumes are attached but left raw (no filesystem) so Longhorn can claim them in block-device mode in Phase 3."
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.longhorn_volume_size_gb >= 1 && var.longhorn_volume_size_gb <= 16384
+    error_message = "longhorn_volume_size_gb must be between 1 and 16384 (DO Block Storage limits)."
+  }
+}
