@@ -1,8 +1,8 @@
 # Proposal — add-rke2-install
 
-**Tracking issue:** [#6](https://github.com/geekmush/rke2-demo/issues/6)
+**Tracking issue:** [#6](https://github.com/geekmush/rke2-demo/issues/6) (closed)
 **Phase:** 1 — DO bring-up
-**Status:** proposed
+**Status:** archived 2026-05-15 — shipped via [PR #7](https://github.com/geekmush/rke2-demo/pull/7). Follow-ups: [#8](https://github.com/geekmush/rke2-demo/issues/8) (off-box etcd snapshots), [#9](https://github.com/geekmush/rke2-demo/issues/9) (ansible-lint in CI).
 
 ## Why
 

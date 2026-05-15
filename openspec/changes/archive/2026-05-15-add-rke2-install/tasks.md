@@ -108,7 +108,7 @@ Implementation order. Each numbered task is small enough to be a discrete commit
 
 ## Close-out
 
-- [ ] 37. Author PR — multiple commits per the project preference (`[[feedback_commit_style]]` memory). Suggested split:
+- [x] 37. Author PR — multiple commits per the project preference (`[[feedback_commit_style]]` memory). Suggested split:
   - `feat(terraform): add CP load balancer and cp_endpoint output`
   - `feat(ansible): scaffold layout, ansible.cfg, requirements, render-inventory`
   - `feat(ansible): add rke2_common role`
@@ -117,10 +117,10 @@ Implementation order. Each numbered task is small enough to be a discrete commit
   - `feat(ansible): site.yml playbook orchestrating bring-up`
   - `feat(ansible): kubeconfig retrieval`
   - `docs: rke2 install runbook, topology diagram, README pointer`
-- [ ] 38. Walk the secrets safe-staging checklist from `docs/runbooks/secrets.md`.
-- [ ] 39. Open PR. Title: `Add RKE2 install via Ansible (closes #6)`. Include `kubectl get nodes` and `kubectl get pods -A` output (with cluster identifiers redacted) in the body.
-- [ ] 40. Merge. Issue #6 closes automatically.
-- [ ] 41. File follow-up issues:
+- [x] 38. Walk the secrets safe-staging checklist from `docs/runbooks/secrets.md`.
+- [x] 39. Open PR. Title: `Add RKE2 install via Ansible (closes #6)`. Include `kubectl get nodes` and `kubectl get pods -A` output (with cluster identifiers redacted) in the body.
+- [x] 40. Merge. Issue #6 closes automatically.
+- [x] 41. File follow-up issues:
   - "Copy etcd snapshots off-box to DO Spaces" (`type:task, phase-1, area:rke2, priority:normal`)
   - "Add ansible-lint to CI when CI lands" (`type:task, phase-1, area:ansible, priority:low`)
-- [ ] 42. Archive change directory: `git mv openspec/changes/add-rke2-install openspec/changes/archive/<date>-add-rke2-install`.
+- [x] 42. Archive change directory: `git mv openspec/changes/add-rke2-install openspec/changes/archive/<date>-add-rke2-install`.
