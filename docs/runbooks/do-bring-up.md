@@ -131,6 +131,36 @@ sysctl net.ipv4.ip_forward                          # = 1
 grep -h Password /etc/ssh/sshd_config.d/*.conf      # PasswordAuthentication no
 ```
 
+### Phase 2 storage substrate (DO Block Storage volumes)
+
+After the droplet apply, the Tofu module also provisions **one 50 GB DigitalOcean Block Storage volume per worker** (three volumes, ~$15/month at $0.10/GB-month). Volumes are attached to the workers but left **raw**: no filesystem, no mount. Longhorn (installed by FluxCD in Phase 3) consumes them in block-device mode -- the more efficient path -- which requires the disks to stay un-formatted.
+
+Stable device paths are surfaced as a Tofu output:
+
+```bash
+make -C terraform output worker_longhorn_devices
+# {
+#   "rke2-demo-worker-01" = "/dev/disk/by-id/scsi-0DO_Volume_rke2-demo-worker-01-longhorn"
+#   "rke2-demo-worker-02" = "/dev/disk/by-id/scsi-0DO_Volume_rke2-demo-worker-02-longhorn"
+#   "rke2-demo-worker-03" = "/dev/disk/by-id/scsi-0DO_Volume_rke2-demo-worker-03-longhorn"
+# }
+```
+
+Verify on a worker:
+
+```bash
+ssh -i ~/.ssh/rke2_demo_ed25519 root@<worker-public-ip>
+lsblk                                                          # expect a 50G sda with no MOUNTPOINTS
+ls -l /dev/disk/by-id/scsi-0DO_Volume_*-longhorn               # symlink resolves to /dev/sda
+mount | grep sda                                               # nothing -- raw, unmounted
+```
+
+If `lsblk` shows a filesystem or mount on the new disk, something pre-formatted it -- check `cloud-init.yaml.tftpl` for unintended changes and `digitalocean_volume.longhorn`'s `initial_filesystem_type` (must stay `null`).
+
+**Resize later (non-destructive):** bump `var.longhorn_volume_size_gb` in `terraform/environments/do-test/terraform.tfvars`; `make apply`. DO grows the volume in place. Longhorn (once installed) needs a manual disk-resize through its UI/API to consume the new space.
+
+**Destroy semantics:** `make -C terraform destroy` removes the volumes too. Once Longhorn is installed and holding data, that data is **gone** with the volumes. Phase 3 will document Longhorn's snapshot/backup target setup so destroy is recoverable.
+
 ### Destroy (between sessions)
 
 Six droplets at the test sizes cost ~$0.30/hour. Tear down when you're not actively working:
