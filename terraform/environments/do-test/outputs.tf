@@ -37,3 +37,8 @@ output "cp_endpoint" {
   description = "Control-plane load balancer IP. kube API at https://<cp_endpoint>:6443; RKE2 supervisor at https://<cp_endpoint>:9345."
   value       = module.infra.cp_endpoint
 }
+
+output "worker_longhorn_devices" {
+  description = "Map of worker hostname -> stable Longhorn block-device path. Consumed by the FluxCD-managed Longhorn install in Phase 3."
+  value       = module.infra.worker_longhorn_devices
+}

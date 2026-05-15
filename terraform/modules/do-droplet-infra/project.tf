@@ -4,9 +4,10 @@
 # only slots resources into it. If var.do_project_name is null, this block
 # is a no-op.
 #
-# Note: only droplets are attached. DigitalOcean Projects group droplets,
-# load balancers, volumes, floating IPs, etc. — but NOT VPCs or firewalls
-# (those associate with droplets implicitly).
+# Note: droplets and volumes are attached. DigitalOcean Projects group
+# droplets, load balancers, volumes, floating IPs, etc. — but NOT VPCs,
+# firewalls, or internal load balancers (those associate with droplets
+# implicitly or are not Project-attachable resources).
 #
 # Token scope requirement: project:read + project:update.
 
@@ -22,5 +23,6 @@ resource "digitalocean_project_resources" "this" {
   resources = concat(
     digitalocean_droplet.cp[*].urn,
     digitalocean_droplet.worker[*].urn,
+    digitalocean_volume.longhorn[*].urn,
   )
 }
