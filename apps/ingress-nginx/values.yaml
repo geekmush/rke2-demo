@@ -36,8 +36,12 @@ controller:
     # Setting this to Local so we can see real client IPs in our logs - so we can see where our traffic is actually coming from.
     externalTrafficPolicy: "Local"
 
+    # Template default was IPv6; rke2-demo's cluster doesn't have IPv6
+    # enabled. The HelmRelease fails with `Service "ingress-nginx-controller"
+    # is invalid: spec.ipFamilies[0]: Invalid value: "IPv6": not configured
+    # on this cluster` if IPv6 is requested here.
     ipFamilies:
-    - IPv6
+    - IPv4
 
 # Example of how to expose a TCP service
 # tcp:
