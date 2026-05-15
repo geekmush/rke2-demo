@@ -55,12 +55,16 @@ devopscoop's templates cover FluxCD-managed cluster apps but do not yet ship an 
 
 ## Getting started
 
-Phase 1 substrate (VPC + firewall + SSH key + 6 droplets + cloud-init) is provisioned with the OpenTofu module under [`terraform/modules/do-droplet-infra/`](terraform/modules/do-droplet-infra/), consumed by the root env at [`terraform/environments/do-test/`](terraform/environments/do-test/).
+Phase 1 substrate (VPC + firewall + SSH key + 6 droplets + cloud-init) is provisioned with the OpenTofu module under [`terraform/modules/do-droplet-infra/`](terraform/modules/do-droplet-infra/), consumed by the root env at [`terraform/environments/do-test/`](terraform/environments/do-test/). RKE2 is installed on that substrate via Ansible (3 CP HA + 3 workers).
 
-End-to-end operator procedure: [`docs/runbooks/do-bring-up.md`](docs/runbooks/do-bring-up.md).
+End-to-end operator procedure:
+1. [`docs/runbooks/do-bring-up.md`](docs/runbooks/do-bring-up.md) — droplets, VPC, firewall, internal CP load balancer.
+2. [`docs/runbooks/rke2-install.md`](docs/runbooks/rke2-install.md) — RKE2 server + agent install, kubeconfig retrieval, operator SSH tunnel.
+
 Network topology: [`docs/diagrams/do-network.md`](docs/diagrams/do-network.md).
+RKE2 cluster topology: [`docs/diagrams/rke2-topology.md`](docs/diagrams/rke2-topology.md).
 
-RKE2, Rancher, Longhorn, and FluxCD land in subsequent changes.
+Rancher, Longhorn, and FluxCD land in subsequent changes.
 
 ## Contributing
 
