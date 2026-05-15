@@ -159,6 +159,12 @@ case "$k8s_platform" in
   talos)
     app_list="metallb.yaml metallb-custom-resources.yaml"
     ;;
+  rke2)
+    # Longhorn for PVC storage. No rook-ceph (Longhorn replaces it for
+    # rke2-demo); no metallb (DO LB handles the CP endpoint; no in-cluster
+    # L2 LB needed in test phase).
+    app_list="longhorn.yaml"
+    ;;
   *)
     echo "ERROR: k8s_platform invalid" >&2
     exit 1
