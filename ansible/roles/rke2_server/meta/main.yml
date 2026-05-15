@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: rke2_server
+  author: rke2-demo
+  description: Install and configure the RKE2 server (control plane) on a node. Handles bootstrap vs. join.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []
