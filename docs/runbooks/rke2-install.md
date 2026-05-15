@@ -67,7 +67,7 @@ What happens:
    - everyone else -> `server: https://<cp_endpoint>:9345` (join)
    - writes config, installs RKE2 (pinned version), enables/starts the service
    - waits for `:9345` and `:6443` to respond
-   - on the bootstrap CP: fetches `/etc/rancher/rke2/rke2.yaml`, rewrites the `server:` URL to `https://127.0.0.1:6443`, writes it to `ansible/artifacts/kubeconfig` (mode 0600)
+   - on the bootstrap CP: fetches `/etc/rancher/rke2/rke2.yaml`, rewrites the `server:` URL to `https://127.0.0.1:6443`, writes it to `~/.kube/rke2-demo` (mode 0600)
 3. **`rke2_agent`** runs in parallel on the 3 workers -- install + start.
 
 Expected timing: 7-10 min for a cold install (most of it pulling RKE2 images). A re-run on a healthy cluster is 2-3 min and reports zero changes (other than kubeconfig if you've moved it).
@@ -99,7 +99,7 @@ kubectl get nodes -o wide
 Or do it manually:
 
 ```bash
-export KUBECONFIG="$(pwd)/ansible/artifacts/kubeconfig"
+export KUBECONFIG="$HOME/.kube/rke2-demo"
 kubectl get nodes -o wide
 kubectl get pods -A
 ```
@@ -111,13 +111,13 @@ The kubeconfig's `server:` URL is `https://127.0.0.1:6443`. The cert includes `1
 Inside the tunnel:
 
 ```bash
-kubectl --kubeconfig ansible/artifacts/kubeconfig get nodes
+kubectl --kubeconfig ~/.kube/rke2-demo get nodes
 # expect: 3 Ready control-plane,etcd + 3 Ready <none>
 
-kubectl --kubeconfig ansible/artifacts/kubeconfig -n kube-system get pods | grep etcd
+kubectl --kubeconfig ~/.kube/rke2-demo -n kube-system get pods | grep etcd
 # expect: 3 etcd-* pods, all 1/1 Running
 
-kubectl --kubeconfig ansible/artifacts/kubeconfig get pods -A --no-headers | awk '$4 != "Running" && $4 != "Completed" {print}'
+kubectl --kubeconfig ~/.kube/rke2-demo get pods -A --no-headers | awk '$4 != "Running" && $4 != "Completed" {print}'
 # expect: nothing
 ```
 
@@ -182,7 +182,7 @@ If `ping` fails between two CPs but works to a worker, the most likely cause is 
 
 ### "I rebuilt my workstation -- where's the kubeconfig?"
 
-`ansible/artifacts/kubeconfig` is gitignored and operator-local. Get a new copy by re-running the play -- the bootstrap-CP-only fetch fires on every run:
+`~/.kube/rke2-demo` lives in the operator's home directory -- outside the repo working tree -- so a fresh workstation has no copy. Get one by re-running the play; the bootstrap-CP-only fetch fires on every run:
 
 ```bash
 make -C ansible play
@@ -191,9 +191,9 @@ make -C ansible play
 Alternatively, copy it directly:
 
 ```bash
-scp -i ~/.ssh/rke2_demo_ed25519 root@<any-cp-public>:/etc/rancher/rke2/rke2.yaml ansible/artifacts/kubeconfig
-sed -i 's|https://127.0.0.1:6443|https://127.0.0.1:6443|' ansible/artifacts/kubeconfig  # no-op; safe
-chmod 600 ansible/artifacts/kubeconfig
+scp -i ~/.ssh/rke2_demo_ed25519 root@<any-cp-public>:/etc/rancher/rke2/rke2.yaml ~/.kube/rke2-demo
+sed -i 's|https://127.0.0.1:6443|https://127.0.0.1:6443|' ~/.kube/rke2-demo  # no-op; safe
+chmod 600 ~/.kube/rke2-demo
 ```
 
 (The kubeconfig is already pointed at `127.0.0.1:6443` -- the `sed` is harmless.)

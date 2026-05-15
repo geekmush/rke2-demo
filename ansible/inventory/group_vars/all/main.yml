@@ -30,10 +30,13 @@ kube_apiserver_port: 6443
 kubelet_port:        10250
 
 # Where on the operator workstation to deposit the rewritten kubeconfig
-# after the first CP comes up. `playbook_dir` is .../ansible/playbooks at
-# play time; the `../` puts the kubeconfig under .../ansible/artifacts/,
-# which is what `make kubeconfig` and the runbook reference.
-operator_kubeconfig_path: "{{ playbook_dir }}/../artifacts/kubeconfig"
+# after the first CP comes up. Lives under the operator's home `~/.kube/`
+# -- OUTSIDE the repo working tree -- so a kubeconfig (a cluster-admin
+# credential) cannot accidentally land in a commit. Matches the convention
+# `devopscoop/fluxcd-template`'s deploy.sh hardcodes
+# (KUBECONFIG="${HOME}/.kube/${cluster_name}") so Phase 3 bootstrap
+# reuses the same file.
+operator_kubeconfig_path: "{{ lookup('env', 'HOME') }}/.kube/rke2-demo"
 
 # Override RKE2's default cluster (pod) and service CIDRs. The defaults are
 # 10.42.0.0/16 and 10.43.0.0/16 respectively, which overlap the do-test

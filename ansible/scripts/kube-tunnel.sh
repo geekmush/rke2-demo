@@ -19,7 +19,7 @@
 #   ansible/scripts/kube-tunnel.sh --once     # try one CP and exit on failure
 #
 # In another terminal:
-#   export KUBECONFIG="$(pwd)/ansible/artifacts/kubeconfig"
+#   export KUBECONFIG="$HOME/.kube/rke2-demo"
 #   kubectl get nodes
 
 set -euo pipefail
