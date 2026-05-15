@@ -3,10 +3,10 @@
 export KUBECONFIG="${HOME}/.kube/rke2-demo"
 export cluster_name=rke2-demo
 export flux_path=flux
-export git_owner=devopscoop
-export git_platform=gitlab
-export git_repo=rke2-demo-deploy
-export k8s_platform=eks # eks, k0s, talos
+export git_owner=geekmush
+export git_platform=github
+export git_repo=rke2-demo
+export k8s_platform=rke2 # rke2, eks, k0s, talos
 
 # Have to decrypt our encrypted keys.txt like this because of this bug:
 # https://github.com/getsops/sops/issues/933
