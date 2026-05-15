@@ -4,7 +4,7 @@ Operating instructions for Claude Code in this repository. Read this before doin
 
 ## Project goal
 
-Stand up an RKE2 + Rancher + Longhorn cluster — first on DigitalOcean droplets (test phase), then on bare metal (production phase). End-state cluster apps are managed via FluxCD using [devopscoop's fluxcd-template](https://github.com/devopscoop). RKE2 deployment artifacts produced here are intended to be contributed back to devopscoop (no RKE2 repo exists there yet — this would be a net-new contribution).
+Stand up an RKE2 + Longhorn cluster — first on DigitalOcean droplets (test phase), then on bare metal (production phase). End-state cluster apps (including the platform components: cert-manager, ingress-nginx, external-dns, Longhorn, etc.) are managed via FluxCD using [devopscoop's fluxcd-template](https://github.com/devopscoop/fluxcd-template), vendored as a git subtree into this repo. Cluster operations use `k9s` / OpenLens on the operator workstation. Rancher is **deliberately out of scope** at this phase — revisit only if multi-cluster management materializes in Phase 4+. RKE2 deployment artifacts produced here are intended to be contributed back to devopscoop (no RKE2 repo exists there yet — this would be a net-new contribution).
 
 ## Test-phase infrastructure (DigitalOcean)
 
