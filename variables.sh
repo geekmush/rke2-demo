@@ -8,15 +8,19 @@ export git_platform=github
 export git_repo=rke2-demo
 export k8s_platform=rke2 # rke2, eks, k0s, talos
 
-# Have to decrypt our encrypted keys.txt like this because of this bug:
-# https://github.com/getsops/sops/issues/933
 if [[ "$OSTYPE" == "darwin"* ]]; then
- export sops_dir="${HOME}/Library/Application Support/sops/age"
+  export sops_dir="${HOME}/Library/Application Support/sops/age"
 elif [[ "$OSTYPE" == "linux"* ]]; then
- export sops_dir="${HOME}/.config/sops/age"
+  export sops_dir="${HOME}/.config/sops/age"
 fi
-# shellcheck disable=SC2155
-export SOPS_AGE_KEY=$(age -d "${sops_dir}/keys.txt")
+
+# rke2-demo's age keys.txt is plaintext (per docs/runbooks/linux-workstation-setup.md
+# step 8). The upstream template assumes age-passphrase-encrypted keys.txt and uses
+# `export SOPS_AGE_KEY=$(age -d ...)` to materialize the key in-shell -- which errors
+# on a plaintext file. We use SOPS_AGE_KEY_FILE instead: SOPS reads the file directly
+# at decryption time. No bash-level decryption, no passphrase prompt.
+# Phase 5 candidate to upstream as a variables.sh switch / both-modes-supported.
+export SOPS_AGE_KEY_FILE="${sops_dir}/keys.txt"
 
 # https://github.com/fluxcd/flux2/releases/
 export flux_version=2.6.4

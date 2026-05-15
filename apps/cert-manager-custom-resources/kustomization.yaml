@@ -6,4 +6,5 @@ namespace: cert-manager
 
 resources:
   - digitalocean-dns.secrets.yaml
-  - clusterissuer.yaml
+  - clusterissuer.yaml             # letsencrypt (ACME, DNS-01 via DO; blocked on DNS propagation)
+  - selfsigned-clusterissuer.yaml  # in-memory CA; no external deps; cluster-internal use
