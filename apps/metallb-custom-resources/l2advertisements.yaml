@@ -17,6 +17,6 @@ metadata:
   namespace: metallb
 spec:
   ipAddressPools:
-    - project1-dev
+    - rke2-demo
   interfaces:
     - bond0

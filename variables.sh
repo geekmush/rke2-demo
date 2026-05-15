@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-export KUBECONFIG="${HOME}/.kube/project1-dev"
-export cluster_name=project1-dev
+export KUBECONFIG="${HOME}/.kube/rke2-demo"
+export cluster_name=rke2-demo
 export flux_path=flux
 export git_owner=devopscoop
 export git_platform=gitlab
-export git_repo=project1-dev-deploy
+export git_repo=rke2-demo-deploy
 export k8s_platform=eks # eks, k0s, talos
 
 # Have to decrypt our encrypted keys.txt like this because of this bug:
