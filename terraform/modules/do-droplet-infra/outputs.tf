@@ -46,3 +46,8 @@ output "region" {
   description = "DigitalOcean region slug used for this deployment."
   value       = var.region
 }
+
+output "cp_endpoint" {
+  description = "Public IP of the control-plane load balancer. RKE2 join URL is https://<cp_endpoint>:9345; kube API is https://<cp_endpoint>:6443. RKE2 tls-san accepts IPs."
+  value       = digitalocean_loadbalancer.cp.ip
+}

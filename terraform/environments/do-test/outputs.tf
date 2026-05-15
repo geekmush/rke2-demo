@@ -32,3 +32,8 @@ output "region" {
   description = "Region slug."
   value       = module.infra.region
 }
+
+output "cp_endpoint" {
+  description = "Control-plane load balancer IP. kube API at https://<cp_endpoint>:6443; RKE2 supervisor at https://<cp_endpoint>:9345."
+  value       = module.infra.cp_endpoint
+}

@@ -19,7 +19,16 @@ variable "region" {
 variable "vpc_cidr" {
   description = "Private CIDR for the VPC."
   type        = string
-  default     = "10.42.0.0/20"
+  # The VPC range overlaps RKE2's default pod CIDR (10.42.0.0/16). To avoid
+  # the CNI's pod-network routes shadowing the VPC routes inside the kernel
+  # routing table, the RKE2 server role pins cluster-cidr and service-cidr
+  # to non-overlapping ranges (10.244.0.0/16 / 10.245.0.0/16) -- see
+  # ansible/inventory/group_vars/all/main.yml.
+  #
+  # Why not just move the VPC? DO marks one VPC per region as "default" and
+  # refuses both deletion and demotion of it. This VPC is currently nyc3's
+  # default, so changing its CIDR (a ForceNew on the resource) is blocked.
+  default = "10.42.0.0/20"
 }
 
 variable "ssh_pubkey" {
@@ -74,3 +83,4 @@ variable "do_project_name" {
   type        = string
   default     = "RKE2"
 }
+
