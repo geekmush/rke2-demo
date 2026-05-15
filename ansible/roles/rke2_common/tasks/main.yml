@@ -1,0 +1,76 @@
+---
+# Idempotent replay of the OS prereqs cloud-init established at first boot
+# (see terraform/modules/do-droplet-infra/cloud-init.yaml.tftpl). A healthy
+# host reports `changed=0` for the whole role; drift is corrected in place.
+
+# --- Swap ---
+
+- name: check whether swap is active
+  ansible.builtin.command: swapon --show=NAME --noheadings
+  register: rke2_common_swap
+  changed_when: false
+
+- name: disable swap if any is active
+  ansible.builtin.command: swapoff -a
+  when: rke2_common_swap.stdout | length > 0
+
+- name: ensure /etc/fstab has no active swap entry
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^[^#].*\sswap\s'
+    state: absent
+    backup: true
+
+# --- Kernel modules required by kube/CNI ---
+
+- name: load kernel modules now
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - br_netfilter
+    - overlay
+
+- name: persist kernel modules across reboot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      br_netfilter
+      overlay
+
+# --- Sysctls ---
+#
+# `ansible.posix.sysctl` writes to sysctl_file, runs `sysctl -p` on that file,
+# and is idempotent at the key level (only changes a key if value differs).
+
+- name: ensure k8s sysctls
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-k8s.conf
+    reload: true
+    state: present
+  loop:
+    - { name: net.bridge.bridge-nf-call-iptables, value: "1" }
+    - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+    - { name: net.ipv4.ip_forward, value: "1" }
+
+# --- sshd hardening ---
+#
+# Drop-in under /etc/ssh/sshd_config.d/ so we do not fight cloud-init's own
+# sshd_config edits and so DO's vendor-data (ssh_pwauth: false) still applies.
+
+- name: install sshd hardening drop-in
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-rke2-demo.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin prohibit-password
+      KbdInteractiveAuthentication no
+  notify: reload sshd

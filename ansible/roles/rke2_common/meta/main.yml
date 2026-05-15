@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: rke2_common
+  author: rke2-demo
+  description: Idempotent OS prereqs shared by every RKE2 host. Replays the work cloud-init did at first boot.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble  # 24.04 LTS
+dependencies: []
