@@ -1,8 +1,8 @@
 # Proposal — add-fluxcd-bootstrap
 
-**Tracking issue:** [#16](https://github.com/geekmush/rke2-demo/issues/16)
+**Tracking issue:** [#16](https://github.com/geekmush/rke2-demo/issues/16) (closed)
 **Phase:** 3 — GitOps
-**Status:** proposed
+**Status:** archived 2026-05-15 -- shipped via [PR #17](https://github.com/geekmush/rke2-demo/pull/17). 4 issues found + fixed during operator execution (see PR comment + issue #18 / PR #19 for the Phase 1 Canal/Flannel VXLAN bug).
 
 ## Why
 
