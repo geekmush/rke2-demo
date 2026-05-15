@@ -1,0 +1,24 @@
+---
+# Full bring-up: rke2_common everywhere -> rke2_server one CP at a time
+# -> rke2_agent across all workers. The serial: 1 on the server play is
+# load-bearing -- it gates cluster-init to a single bootstrap host and
+# lets the other CPs probe the LB and join cleanly.
+
+- name: OS prereqs on every host
+  hosts: all
+  gather_facts: true
+  roles:
+    - rke2_common
+
+- name: RKE2 server (control plane)
+  hosts: rke2_servers
+  gather_facts: false
+  serial: 1
+  roles:
+    - rke2_server
+
+- name: RKE2 agent (workers)
+  hosts: rke2_agents
+  gather_facts: false
+  roles:
+    - rke2_agent
