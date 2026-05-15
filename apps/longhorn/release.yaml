@@ -1,0 +1,37 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  name: longhorn-system
+  labels:
+    # https://longhorn.io/docs/1.9.0/advanced-resources/os-distro-specific/talos-linux-support/#pod-security
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: longhorn
+spec:
+  interval: 60m
+  url: https://charts.longhorn.io
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: longhorn
+spec:
+  chart:
+    spec:
+      chart: longhorn
+      version: 1.10.0
+      sourceRef:
+        kind: HelmRepository
+        name: longhorn
+  interval: 10m
+  valuesFrom:
+    - kind: ConfigMap
+      name: longhorn-values
+    - kind: Secret
+      name: longhorn-secrets

@@ -2,7 +2,7 @@
 
 RKE2 + Longhorn cluster bring-up. Test phase on DigitalOcean, production phase on bare metal. Platform components and cluster apps managed via FluxCD using [devopscoop's fluxcd-template](https://github.com/devopscoop/fluxcd-template) (vendored as a git subtree). Cluster operations via `k9s` / OpenLens on the operator workstation.
 
-> **Status:** skeleton only. No OpenTofu or Ansible code yet.
+> **Status:** Phase 1 (RKE2 cluster on DigitalOcean) and Phase 2 (per-worker Block Storage volumes for Longhorn) complete. Phase 3 (FluxCD bootstrap + apps stack) in progress -- template vendored, bootstrap is the next operator step.
 
 ## Why this repo exists
 

@@ -44,10 +44,65 @@ Bare metal. Modules and Ansible roles must be parameterized so the same code tar
 ├── README.md              # human-facing overview
 ├── terraform/             # OpenTofu modules and root configs
 ├── ansible/               # roles, playbooks, inventory
+├── apps/                  # vendored from devopscoop/fluxcd-template -- per-app HelmReleases + kustomizations
+├── flux/                  # vendored -- Flux sync manifests, per-platform kustomization entries
+├── bin/                   # vendored -- script-managed cache (kubectl/sops/flux/yq); gitignored
+├── deploy.sh              # vendored -- operator entry point for `flux bootstrap` + app enablement
+├── deploy_new_app.sh      # vendored -- scaffolds a new apps/<name>/ directory
+├── encrypt_secrets.sh     # vendored -- re-encrypts *.decrypted scratch files
+├── variables.sh           # vendored, edited -- cluster_name, git_owner, k8s_platform, etc.
 ├── docs/
 │   ├── runbooks/          # operational procedures
-│   └── diagrams/          # Mermaid sources
+│   ├── diagrams/          # Mermaid sources
+│   └── upstream/          # archived upstream READMEs etc. for reference
 └── openspec/              # OpenSpec proposals and specs
+```
+
+## FluxCD vendor pattern
+
+The `apps/`, `flux/`, `bin/`, `deploy.sh`, `deploy_new_app.sh`, `encrypt_secrets.sh`, and `variables.sh` entries above are vendored from [`devopscoop/fluxcd-template`](https://github.com/devopscoop/fluxcd-template) via `git merge --allow-unrelated-histories` (subtree-at-root pattern). The history is preserved -- `git log --graph` shows both lineages converging at the merge commit.
+
+### Pulling upstream updates
+
+```bash
+git fetch fluxcd-template main
+git merge fluxcd-template/main
+# resolve any conflicts (typically only in files we customized)
+```
+
+The merge is conflict-free for files we haven't edited. Files we DID edit (e.g. `variables.sh`, `apps/external-dns/values.yaml`, `apps/cert-manager-custom-resources/clusterissuer.yaml`) will conflict on upstream changes -- resolve by preserving our cluster-specific edits while picking up upstream's structural changes.
+
+### Adding a new app
+
+Use the template's scaffolding script:
+
+```bash
+./deploy_new_app.sh <app_name> <repo_name> <repo_url> <chart_name> <chart_version>
+```
+
+Produces `apps/<app_name>/` with the standard kustomize-overlay + Helm values + secrets pattern. After scaffolding, edit `flux/flux-system/kustomization.yaml`'s `.resources` list to enable the app on this cluster.
+
+### Where secrets live
+
+Two conventions coexist (see `.sops.yaml`):
+
+- **Our pre-template convention**: `*.enc.<ext>` for Tofu (`terraform/environments/do-test/secrets.enc.tfvars`).
+- **Template convention**: `*.secrets.yaml` for Kubernetes Secret manifests under `apps/<name>/` AND for Ansible group_vars (`ansible/inventory/group_vars/all/secrets.yaml`). `*.helm_secrets.yaml` for Helm value secrets.
+
+Operator workflow for template-convention files:
+
+```bash
+# Edit plaintext scratch:
+$EDITOR apps/<name>/secrets.yaml.decrypted          # gitignored
+
+# Encrypt + remove scratch:
+./encrypt_secrets.sh
+```
+
+Or for one-shot edits of an existing committed encrypted file:
+
+```bash
+sops apps/<name>/secrets.yaml                       # in-place edit, re-encrypts on save
 ```
 
 ## Workflow expectations
@@ -55,4 +110,5 @@ Bare metal. Modules and Ansible roles must be parameterized so the same code tar
 - Use OpenSpec proposals for non-trivial changes (new modules, new roles, scope shifts).
 - Prefer editing existing files over creating new ones.
 - When introducing a new tool or pattern, document the choice and the alternative considered.
-- Secrets never land in git. `.gitignore` already covers `*.tfvars`, `*.env`, key material — verify before staging.
+- Secrets never land in git. `.gitignore` already covers `*.tfvars`, `*.env`, `*.decrypted`, key material — verify before staging.
+- Vendored upstream files (anything under `apps/`, `flux/`, top-level `deploy*.sh` / `encrypt_secrets.sh`) should be edited minimally so future `git pull fluxcd-template main` stays conflict-free. Changes that belong upstream get contributed back as PRs to devopscoop/fluxcd-template (Phase 5).

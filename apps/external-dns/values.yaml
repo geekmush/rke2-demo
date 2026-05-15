@@ -1,0 +1,38 @@
+# dyff between <(yq . <(helm show values external-dns/external-dns --version v1.20.0)) <(yq eval '. * load("values.yaml")' <(helm show values external-dns/external-dns --version v1.20.0))
+# vim -O <(helm show values external-dns/external-dns --version v1.20.0) values.yaml
+
+# In larger environments with lots of records, the default of 1m can trigger rate limiting on Route 53. Uncomment this if needed.
+interval: 10m
+
+# If we have a larger interval, we don't want to wait for external-dns to make changes. Uncomment this if needed.
+triggerLoopOnEvent: true
+
+# We want to delete records for ingresses that have been deleted.
+policy: sync
+
+# If we have multiple k8s clusters writing to the same DNS zone, each external-dns needs a way to identify the records it owns. And since we can only have one external-dns provider per cluster, the setting this to the cluster name seems reasonable.
+txtOwnerId: rke2-demo
+
+# DigitalOcean config based on:
+# https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/digitalocean.md
+# DO is a built-in external-dns provider, not a webhook-based one. The chart
+# accepts the provider as either a string (`provider: digitalocean`) or an
+# object (`provider: { name: digitalocean }`); the string form is sufficient
+# in chart 1.20.0+.
+provider:
+  name: digitalocean
+env:
+  - name: DO_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: digitalocean-dns
+        key: access-token
+
+resources:
+  requests:
+    cpu: 32m
+    memory: 100Mi
+  limits:
+    # Can't explicitly set this to null, because the helm chart is a little overengineered...
+    # "resources.limits.cpu: Invalid type. Expected: string, given: null"
+    memory: 100Mi
