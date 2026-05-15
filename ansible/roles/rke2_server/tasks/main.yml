@@ -53,6 +53,42 @@
     group: root
     mode: '0755'
 
+- name: ensure RKE2 server manifests directory exists
+  ansible.builtin.file:
+    path: /var/lib/rancher/rke2/server/manifests
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+# Bind Canal/Flannel's VXLAN tunnel to the VPC interface. Without this,
+# Flannel defaults to the first interface with a default route (eth0 on DO,
+# which is the public NIC); cross-node pod traffic then has the public IP
+# as its outer-VXLAN source and gets dropped by the cluster firewall's
+# "UDP/8472 from VPC sources only" rule. See issue #18 for the diagnosis.
+#
+# RKE2's bundled helm-controller watches /var/lib/rancher/rke2/server/manifests/
+# and applies HelmChartConfig overlays to the bundled charts on startup --
+# so this file must exist BEFORE rke2-server first starts (this task runs
+# before the install step).
+- name: configure Canal to bind Flannel VXLAN to {{ rke2_canal_flannel_iface }}
+  ansible.builtin.copy:
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-canal-config.yaml
+    owner: root
+    group: root
+    mode: '0600'
+    content: |
+      ---
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChartConfig
+      metadata:
+        name: rke2-canal
+        namespace: kube-system
+      spec:
+        valuesContent: |-
+          flannel:
+            iface: "{{ rke2_canal_flannel_iface }}"
+
 - name: write rke2 server config
   ansible.builtin.template:
     src: config.yaml.j2
