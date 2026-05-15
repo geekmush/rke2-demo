@@ -1,0 +1,5 @@
+{# Rendered by Ansible (rke2_agent role). Do not hand-edit. Permissions: 0600 root:root. #}
+token: "{{ rke2_agent_token }}"
+server: "https://{{ cp_endpoint }}:{{ rke2_supervisor_port }}"
+
+node-ip: {{ private_ip }}
