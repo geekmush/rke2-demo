@@ -5,7 +5,7 @@ metadata:
   name: letsencrypt
 spec:
   acme:
-    email: hostmaster@devops.coop
+    email: hostmaster@escapekey.org
 
     # Default profile is "classic", but cert-manager docs uses tlsserver, which reflects "the latest recommendations from the CA/Browser Forum Baseline Requirements, as well as general trends within the WebPKI community."
     # https://cert-manager.io/docs/configuration/acme/#acme-certificate-profiles
@@ -28,12 +28,24 @@ spec:
 
     solvers:
 
-      # Use this for ingress-nginx
+      # DNS-01 via DigitalOcean DNS. Primary solver -- works regardless of
+      # whether the cluster has public ingress reachability. The token Secret
+      # is provisioned by apps/cert-manager-custom-resources/digitalocean-dns.secrets.yaml.
+      # https://cert-manager.io/docs/configuration/acme/dns01/digitalocean/
+      - dns01:
+          digitalocean:
+            tokenSecretRef:
+              name: digitalocean-dns
+              key: access-token
+
+      # HTTP-01 fallback via ingress-nginx. Useful for cluster-internal apps
+      # served through the ingress; cert-manager picks the solver based on
+      # which one matches the certificate's domain.
       - http01:
           ingress:
             ingressClassName: nginx
 
-      # Use this for envoy gateway
+      # Future: envoy gateway. Uncomment if/when Gateway API lands in this cluster.
       # https://gateway.envoyproxy.io/docs/tasks/security/tls-cert-manager/#using-the-acme-issuer-with-lets-encrypt-and-http-01
       # - http01:
       #     gatewayHTTPRoute:
@@ -41,10 +53,3 @@ spec:
       #       - kind: Gateway
       #         name: eg
       #         namespace: envoy-gateway-system
-
-      # - dns01:
-      #     cloudflare:
-      #       email: hostmaster@devops.coop
-      #       apiTokenSecretRef:
-      #         name: cloudflare-apikey-secret
-      #         key: apikey

@@ -13,19 +13,20 @@ policy: sync
 # If we have multiple k8s clusters writing to the same DNS zone, each external-dns needs a way to identify the records it owns. And since we can only have one external-dns provider per cluster, the setting this to the cluster name seems reasonable.
 txtOwnerId: rke2-demo
 
-# Cloudflare config based on:
-# https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/cloudflare.md
+# DigitalOcean config based on:
+# https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/digitalocean.md
+# DO is a built-in external-dns provider, not a webhook-based one. The chart
+# accepts the provider as either a string (`provider: digitalocean`) or an
+# object (`provider: { name: digitalocean }`); the string form is sufficient
+# in chart 1.20.0+.
 provider:
-  name: cloudflare
-  webhook:
-    args:
-      - --cloudflare-dns-records-per-page=5000
+  name: digitalocean
 env:
-  - name: CF_API_TOKEN
+  - name: DO_TOKEN
     valueFrom:
       secretKeyRef:
-        name: cloudflare-api-key
-        key: apiKey
+        name: digitalocean-dns
+        key: access-token
 
 resources:
   requests:
