@@ -53,3 +53,13 @@ operator_kubeconfig_path: "{{ lookup('env', 'HOME') }}/.kube/{{ cluster_name }}"
 # DO's per-region "default VPC" rule blocks deletion and demotion of our VPC.
 rke2_cluster_cidr: "10.244.0.0/16"
 rke2_service_cidr: "10.245.0.0/16"
+
+# Network interface for Canal/Flannel's VXLAN tunnel. Must be the interface
+# that holds the node's VPC private IP -- the cluster firewall allows UDP/8472
+# (Flannel VXLAN) only from VPC sources, so binding to the public NIC would
+# get cross-node pod traffic dropped at the firewall.
+#
+# DO droplets in a VPC use `eth1` (eth0 = public, eth1 = VPC). Bare-metal
+# Phase 4 will need to override this to whatever the host's VPC-equivalent
+# interface is named (likely `bond0` or similar).
+rke2_canal_flannel_iface: eth1
