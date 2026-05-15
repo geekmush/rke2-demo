@@ -40,14 +40,16 @@ play: check-tools inventory
 play-check: check-tools inventory
 	ansible-playbook --check --diff $(PLAYBOOK)
 
+KUBECONFIG_PATH := $(HOME)/.kube/rke2-demo
+
 kubeconfig:
-	@if [ -f artifacts/kubeconfig ]; then \
+	@if [ -f $(KUBECONFIG_PATH) ]; then \
 	  echo "# Run these in a shell that will use kubectl:"; \
-	  echo "export KUBECONFIG=$$(realpath artifacts/kubeconfig)"; \
+	  echo "export KUBECONFIG=$(KUBECONFIG_PATH)"; \
 	  echo "# In a SEPARATE terminal, start the SSH tunnel:"; \
 	  echo "make -C $$(realpath .) tunnel"; \
 	else \
-	  echo "artifacts/kubeconfig not present yet -- run \`make play\` first"; \
+	  echo "$(KUBECONFIG_PATH) not present yet -- run \`make play\` first"; \
 	  exit 1; \
 	fi
 

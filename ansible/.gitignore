@@ -1,7 +1,9 @@
 # Generated inventory — produced from `tofu output -json` by scripts/render-inventory.py.
 inventory/generated.yaml
 
-# Operator-local credentials and run artifacts.
+# Belt-and-braces: artifacts/ used to hold the operator kubeconfig before it
+# was moved to ~/.kube/rke2-demo. Keep the rule so a future stray write
+# inside the repo working tree still doesn't escape into git.
 artifacts/
 
 # Ansible Galaxy collection cache (if anyone uses --target ./.galaxy-cache).

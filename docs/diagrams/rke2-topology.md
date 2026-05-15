@@ -76,7 +76,7 @@ sequenceDiagram
     Note over cp1: probe LB:9345/ping<br/>no response, no local etcd<br/>=> cluster-init: true
     playbook->>cp1: install RKE2, start rke2-server
     cp1-->>playbook: 9345 + 6443 healthy
-    playbook->>operator: fetch + rewrite kubeconfig<br/>=> ansible/artifacts/kubeconfig
+    playbook->>operator: fetch + rewrite kubeconfig<br/>=> ~/.kube/rke2-demo
     Note over cp23: probe LB:9345/ping<br/>cp-01 healthy via LB<br/>=> server: https://&lt;LB&gt;:9345
     playbook->>cp23: install RKE2, start rke2-server
     cp23->>lb: join
