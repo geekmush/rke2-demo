@@ -160,10 +160,17 @@ case "$k8s_platform" in
     app_list="metallb.yaml metallb-custom-resources.yaml"
     ;;
   rke2)
-    # Longhorn for PVC storage. No rook-ceph (Longhorn replaces it for
-    # rke2-demo); no metallb (DO LB handles the CP endpoint; no in-cluster
-    # L2 LB needed in test phase).
-    app_list="longhorn.yaml"
+    # TEMPORARY (Phase 3b only): longhorn dropped so we can validate the
+    # Flux + core_apps bring-up with a clean cluster state. The
+    # apps/longhorn/*.secrets.yaml files are encrypted with the template
+    # author's age key (unreadable to us) and would put a permanently-failing
+    # Kustomization in flux-system. Phase 3c restores this to:
+    #     app_list="longhorn.yaml"
+    # alongside the longhorn-config fixes (replace upstream-author-encrypted
+    # secrets with cluster-specific ones; point Longhorn at the per-worker
+    # /dev/disk/by-id/scsi-0DO_Volume_* devices from the Tofu output
+    # `worker_longhorn_devices`).
+    app_list=""
     ;;
   *)
     echo "ERROR: k8s_platform invalid" >&2
