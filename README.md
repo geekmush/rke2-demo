@@ -1,6 +1,6 @@
 # rke2-demo
 
-RKE2 + Rancher + Longhorn cluster bring-up. Test phase on DigitalOcean, production phase on bare metal. Cluster apps managed via FluxCD using [devopscoop's fluxcd-template](https://github.com/devopscoop).
+RKE2 + Longhorn cluster bring-up. Test phase on DigitalOcean, production phase on bare metal. Platform components and cluster apps managed via FluxCD using [devopscoop's fluxcd-template](https://github.com/devopscoop/fluxcd-template) (vendored as a git subtree). Cluster operations via `k9s` / OpenLens on the operator workstation.
 
 > **Status:** skeleton only. No OpenTofu or Ansible code yet.
 
@@ -12,9 +12,9 @@ devopscoop's templates cover FluxCD-managed cluster apps but do not yet ship an 
 
 | Phase | Target | Storage | Notes |
 | --- | --- | --- | --- |
-| 1 — Bring-up | 3 CP + 3 worker droplets on DO | none (deferred) | First end-to-end RKE2 + Rancher install |
-| 2 — Storage | Same droplets | DO Block Storage, dedicated per node | Longhorn enabled, separate disks mandatory |
-| 3 — GitOps | Same | same | FluxCD with devopscoop template manages apps |
+| 1 — Bring-up | 3 CP + 3 worker droplets on DO | none (deferred) | First end-to-end RKE2 install via Ansible |
+| 2 — Storage substrate | Same droplets + dedicated DO Block Storage volumes | volumes attached, not yet formatted by Longhorn | Stages disks Longhorn will claim once FluxCD installs it |
+| 3 — GitOps | Same | Longhorn installed by FluxCD | FluxCD vendored as subtree; manages cert-manager, ingress-nginx, external-dns, Longhorn, and the rest of the apps stack |
 | 4 — Production | Bare metal | dedicated disks | Same modules/roles, different provider |
 | 5 — Upstream | n/a | n/a | Contribute RKE2 parts to devopscoop |
 
