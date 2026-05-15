@@ -1,20 +1,48 @@
 # SOPS encryption rules for rke2-demo.
 #
-# Encrypted files use the *.enc.<ext> convention and live next to what they
-# configure (e.g. terraform/secrets.enc.tfvars, ansible/group_vars/all/secrets.enc.yaml).
+# Two encryption conventions live side by side:
+#   - Our own pattern: `*.enc.<ext>` (yaml, yml, json, env, tfvars). Used for
+#     Tofu (terraform/environments/do-test/secrets.enc.tfvars) and any other
+#     SOPS-encrypted files that aren't Kubernetes Secret manifests.
+#   - devopscoop/fluxcd-template's pattern: `*.secrets.yaml` (Kubernetes Secret
+#     manifests, only data/stringData encrypted) and `*.helm_secrets.yaml`
+#     (Helm values where everything is encrypted).
+#
+# The `secrets.yaml` rule below widens its `encrypted_regex` from the template's
+# default (`^(data|stringData)$`) to also match our token/password/key/secret
+# patterns. This lets non-K8s-Secret YAML files (e.g. Ansible group_vars
+# secrets.yaml with top-level rke2_*_token keys) use the same convention
+# without restructuring.
 #
 # Adding a new recipient:
-#   1. Append their age public key to the `age:` string (comma-separated) in the
-#      matching creation_rule. SOPS expects a comma-separated string, not a YAML list.
-#   2. Re-encrypt every affected file:  sops updatekeys path/to/file.enc.yaml
-#   3. Commit the updated *.enc.* files.
+#   1. Append the new age public key to the `age:` string (comma-separated)
+#      in each creation_rule. SOPS expects a comma-separated string, not a
+#      YAML list.
+#   2. Re-encrypt every affected file:
+#        git ls-files '*.secrets.yaml' '*.helm_secrets.yaml' '*.enc.*' \
+#          | xargs -I{} sops updatekeys -y {}
+#   3. Commit the touched files plus this one.
 #
-# Decryption keys are operator-local — typically ~/.config/sops/age/keys.txt
-# (or %APPDATA%\sops\age\keys.txt on Windows). Never commit private keys.
-#
+# Decryption keys are operator-local -- typically `~/.config/sops/age/keys.txt`.
+# Never commit a private age key.
+
 creation_rules:
+
+  # Our pre-template convention -- *.enc.<ext>. Mostly Tofu-side at the moment
+  # (terraform/environments/do-test/secrets.enc.tfvars) but accepts any
+  # extension in the listed set.
   - path_regex: \.enc\.(ya?ml|json|env|tfvars)$
     encrypted_regex: '^(data|stringData|.*[Pp]assword|.*[Ss]ecret|.*[Tt]oken|.*[Kk]ey)$'
-    # Comma-separate additional operator keys: "age1...,age1..."
-    # geekmush — primary operator
+    age: age1s8ed4qr4k7hvwu6mx5z80prurzz2wcq4gk2ujyh8w75ssaxy44xq8pzjdk
+
+  # Template convention -- *.secrets.yaml. Used for Kubernetes Secret
+  # manifests under apps/ AND for Ansible group_vars files (which carry
+  # top-level *_token / *_key / *_password keys rather than data/stringData).
+  - path_regex: '^.*\/(.*\.)?secrets\.yaml$'
+    encrypted_regex: '^(data|stringData|.*[Pp]assword|.*[Ss]ecret|.*[Tt]oken|.*[Kk]ey)$'
+    age: age1s8ed4qr4k7hvwu6mx5z80prurzz2wcq4gk2ujyh8w75ssaxy44xq8pzjdk
+
+  # Template convention -- *.helm_secrets.yaml. No encrypted_regex: everything
+  # in these files is encrypted (raw Helm values with unpredictable shape).
+  - path_regex: '^.*\/(.*\.)?helm_secrets\.yaml$'
     age: age1s8ed4qr4k7hvwu6mx5z80prurzz2wcq4gk2ujyh8w75ssaxy44xq8pzjdk

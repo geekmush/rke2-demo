@@ -33,20 +33,21 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
-# SOPS / secrets — only *.enc.* files are allowed in git
-secrets/
-secrets.yaml
-secrets.yml
-secrets.json
-secrets.env
-!*.enc.yaml
-!*.enc.yml
-!*.enc.json
-!*.enc.env
+# SOPS / secrets
+# Two conventions live side by side here:
+#   - Our own: *.enc.<ext> -- committed, SOPS-encrypted. tfvars, env, json, yaml.
+#   - devopscoop/fluxcd-template: *.secrets.yaml + *.helm_secrets.yaml --
+#     committed, SOPS-encrypted. Operator-edits-then-encrypts via *.decrypted.
+# The `*.decrypted` files are operator-local plaintext scratch. They must
+# be re-encrypted to their committed twin before commit.
+*.decrypted
 # Local SOPS age key material (must never leave the operator workstation)
 age.key
 *.age
 keys.txt
+
+# FluxCD tooling cache (deploy.sh fetches kubectl/sops/flux/yq into bin/)
+bin/*
 
 # Ansible
 *.retry
