@@ -27,6 +27,17 @@ spec:
         kind: HelmRepository
         name: ingress-nginx
   interval: 10m
+  # disableWait on both install and upgrade because the Service is of type
+  # LoadBalancer and our cluster has no cloud-controller-manager to provision
+  # an external IP -- the Service stays in <pending> EXTERNAL-IP forever, and
+  # helm --wait blocks on that resource never becoming Ready. The controller
+  # pods themselves come up fine; we just don't have the LB plumbing.
+  # Revisit if we ever install DO's cloud controller (Phase 4-ish?) OR if we
+  # decide to flip the Service to ClusterIP.
+  install:
+    disableWait: true
+  upgrade:
+    disableWait: true
   valuesFrom:
     - kind: ConfigMap
       name: ingress-nginx-values
