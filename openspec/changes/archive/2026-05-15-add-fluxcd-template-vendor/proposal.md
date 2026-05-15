@@ -1,8 +1,8 @@
 # Proposal — add-fluxcd-template-vendor
 
-**Tracking issue:** [#14](https://github.com/geekmush/rke2-demo/issues/14)
+**Tracking issue:** [#14](https://github.com/geekmush/rke2-demo/issues/14) (closed)
 **Phase:** 3 — GitOps
-**Status:** proposed
+**Status:** archived 2026-05-15 -- shipped via [PR #15](https://github.com/geekmush/rke2-demo/pull/15).
 
 ## Why
 
