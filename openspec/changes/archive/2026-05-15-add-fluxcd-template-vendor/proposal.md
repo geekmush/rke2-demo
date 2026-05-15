@@ -23,7 +23,7 @@ This change is **file-only prep** -- the tree is adapted to this repo's conventi
   - `.gitignore` -- union (ours: Tofu/Ansible/Claude-state; template's: `bin/*`, `*.decrypted`).
   - `CODEOWNERS` -- replaced with `* @geekmush`.
   - `README.md` -- ours wins; template's moves to `docs/upstream/fluxcd-template-README.md`.
-- **`project1-dev` -> `rke2-demo` rewrite** across the vendored tree (excluding `deploy.sh`, which has its own rewrite logic).
+- **`rke2-demo` -> `rke2-demo` rewrite** across the vendored tree (excluding `deploy.sh`, which has its own rewrite logic).
 - **`variables.sh`** set with `git_platform=github`, `git_owner=geekmush`, `git_repo=rke2-demo`, `cluster_name=rke2-demo`, `k8s_platform=rke2`.
 - **New `rke2` platform case** in `deploy.sh` -- k0s-derived `core_app_list` plus `longhorn`, minus `rook-ceph*` and `metallb*`.
 - **DNS provider swap Cloudflare -> DigitalOcean**:

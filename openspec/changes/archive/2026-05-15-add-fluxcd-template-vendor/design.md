@@ -100,14 +100,14 @@ Replace template's `* gmail@evanstucker.com` / `* @arterro` with:
 
 Ours wins. Template's `README.md` moves to `docs/upstream/fluxcd-template-README.md` -- preserves the upstream "Deploying Flux" 11-step list for reference when we run `deploy.sh` in Phase 3b.
 
-## `project1-dev` -> `rke2-demo` rewrite
+## `rke2-demo` -> `rke2-demo` rewrite
 
 Single global sed across the vendored tree, excluding files where the placeholder is meaningful for `deploy.sh`'s own runtime substitution:
 
 ```bash
 find apps flux variables.sh \
   -type f \( -name '*.yaml' -o -name '*.sh' \) \
-  -exec sed -i 's/project1-dev/rke2-demo/g' {} +
+  -exec sed -i 's/rke2-demo/rke2-demo/g' {} +
 ```
 
 Touches:
@@ -126,7 +126,7 @@ sops_dir="${HOME}/.config/sops/age"   # unchanged from template
 cluster_name="rke2-demo"
 git_platform="github"                  # template default was "gitlab"
 git_owner="geekmush"
-git_repo="rke2-demo"                   # was "project1-dev-deploy"
+git_repo="rke2-demo"                   # was "rke2-demo-deploy"
 k8s_platform="rke2"                    # NEW -- adds the rke2 case
 KUBECONFIG="${HOME}/.kube/${cluster_name}"
 ```

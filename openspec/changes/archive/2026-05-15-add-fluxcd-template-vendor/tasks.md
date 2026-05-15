@@ -17,7 +17,7 @@ Implementation order. Each numbered task is a discrete-commit-sized chunk; sugge
 
 ## Adapt to repo conventions
 
-- [x] 9. Global rewrite `project1-dev` -> `rke2-demo` across `apps/`, `flux/`, and `variables.sh`. Do NOT touch `deploy.sh`. Commit.
+- [x] 9. Global rewrite `rke2-demo` -> `rke2-demo` across `apps/`, `flux/`, and `variables.sh`. Do NOT touch `deploy.sh`. Commit.
 - [x] 10. Edit `variables.sh` settings: `cluster_name=rke2-demo`, `git_platform=github`, `git_owner=geekmush`, `git_repo=rke2-demo`, `k8s_platform=rke2`. Commit.
 - [x] 11. Add `rke2)` case to `deploy.sh`'s `k8s_platform` switch: `additional_apps=(longhorn)`. Verify the script's tail loop concatenates correctly. Commit.
 
@@ -59,7 +59,7 @@ Implementation order. Each numbered task is a discrete-commit-sized chunk; sugge
 - [x] 30. Open PR. Title: `Phase 3a: vendor devopscoop/fluxcd-template + adapt for rke2-demo (closes #14)`. Suggested commit split:
   - `docs(openspec): propose add-fluxcd-template-vendor`
   - `chore: vendor devopscoop/fluxcd-template via merge`
-  - `chore(fluxcd-template): pre-rewrite project1-dev -> rke2-demo`
+  - `chore(fluxcd-template): pre-rewrite rke2-demo -> rke2-demo`
   - `feat(fluxcd-template): set variables.sh for rke2-demo + rke2 platform`
   - `feat(fluxcd-template): add rke2 platform case to deploy.sh`
   - `feat(fluxcd-template): swap Cloudflare -> DigitalOcean DNS (external-dns + cert-manager)`
