@@ -6,9 +6,11 @@
 
 ## Why
 
+> **CCM** = **Cloud Controller Manager** — the standard Kubernetes component that bridges cluster objects to a cloud provider's API. Every managed Kubernetes offering (EKS, GKE, AKS, DOKS) ships its own CCM; RKE2 on raw DigitalOcean droplets does not, which is why we have to install one. CCM watches the cluster and translates Kubernetes objects into provider-side actions — most visibly, turning a `Service` of `type: LoadBalancer` into an actual DigitalOcean Load Balancer and writing its public IP back onto the Service. It also populates `Node` fields like `spec.providerID` and region/zone labels from the cloud provider's view of each VM.
+
 RKE2 on DigitalOcean ships without a cloud-provider integration by default. The `apps/ingress-nginx/release.yaml` comment documents the visible symptom: the ingress-nginx `Service` of `type: LoadBalancer` stays `EXTERNAL-IP <pending>` indefinitely, because nothing translates `LoadBalancer` Services into DO Load Balancers. The 2026-05-16 unattended end-to-end test surfaced this concretely — DNS-01 cert issuance worked anyway (cert-manager only needs DO API access), but external-dns never created the canary A record (no LB IP to advertise), and any actual app traffic would have nowhere to land.
 
-This change installs the [`digitalocean-cloud-controller-manager`](https://github.com/digitalocean/digitalocean-cloud-controller-manager) (CCM) so:
+This change installs the [`digitalocean-cloud-controller-manager`](https://github.com/digitalocean/digitalocean-cloud-controller-manager) — DigitalOcean's implementation of that CCM interface — so:
 - `LoadBalancer`-type Services trigger DO LB provisioning.
 - `Node` objects get DO-source-of-truth fields (`spec.providerID`, `status.addresses`, region/zone labels).
 - The cluster behaves like a "real" managed-cloud cluster from the kubelet's perspective.
