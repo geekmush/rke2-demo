@@ -76,11 +76,20 @@ fi
 
 # Replace project1-dev with cluster_name in all files except this script.
 # Have to use -i.bak because Mac sed is garbage.
+#
+# --exclude-dir=archive: archived design/decision docs intentionally retain
+#   project1-dev as part of their historical record. Sed-replacing those
+#   corrupts the record. (Candidate Phase-5 upstream contribution to
+#   devopscoop/fluxcd-template -- generic enough to belong upstream.)
+# --exclude-dir=openspec: active OpenSpec change proposals reference
+#   project1-dev as a literal string when documenting the convention or
+#   describing prior renames. Project-specific to this repo (OpenSpec is
+#   not part of the upstream template), so this exclusion stays local.
 while read -r f; do
   sed -i.bak "s/project1-dev/${cluster_name}/g" "${f}"
   rm "${f}.bak"
   git add "${f}"
-done < <(grep -rIl project1-dev --exclude-dir .git --exclude deploy.sh .)
+done < <(grep -rIl project1-dev --exclude-dir .git --exclude-dir archive --exclude-dir openspec --exclude deploy.sh .)
 
 # This if statement is needed for idempotency. Don't commit and push if there are no changes.
 if ! git diff HEAD --quiet; then
