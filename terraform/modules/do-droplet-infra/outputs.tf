@@ -22,16 +22,6 @@ output "worker_nodes" {
   ]
 }
 
-output "vpc_id" {
-  description = "DigitalOcean VPC UUID."
-  value       = digitalocean_vpc.main.id
-}
-
-output "vpc_cidr" {
-  description = "VPC IP range as configured."
-  value       = digitalocean_vpc.main.ip_range
-}
-
 output "firewall_id" {
   description = "DigitalOcean firewall UUID."
   value       = digitalocean_firewall.cluster.id

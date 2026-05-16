@@ -28,7 +28,7 @@ resource "digitalocean_loadbalancer" "cp" {
   region   = var.region
   size     = "lb-small"
   network  = "INTERNAL"
-  vpc_uuid = digitalocean_vpc.main.id
+  vpc_uuid = var.vpc_id
 
   droplet_ids = digitalocean_droplet.cp[*].id
 

@@ -8,8 +8,13 @@ variable "region" {
   type        = string
 }
 
-variable "vpc_cidr" {
-  description = "Private CIDR block for the VPC. /20 recommended (4096 addresses)."
+variable "vpc_id" {
+  description = "UUID of the DigitalOcean VPC to place every droplet and the internal LB into. Created and owned at the environment level (see terraform/environments/<env>/vpc.tf) — the module never creates or destroys VPCs because DO refuses to delete the regional default VPC, which makes a module-owned VPC poison the destroy plan."
+  type        = string
+}
+
+variable "vpc_ip_range" {
+  description = "CIDR of the VPC referenced by var.vpc_id. Needed inside the module for firewall rules that allow VPC-internal traffic. Same source as var.vpc_id."
   type        = string
 }
 

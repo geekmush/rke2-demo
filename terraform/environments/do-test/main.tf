@@ -3,7 +3,8 @@ module "infra" {
 
   project_name      = var.project_name
   region            = var.region
-  vpc_cidr          = var.vpc_cidr
+  vpc_id            = digitalocean_vpc.this.id
+  vpc_ip_range      = digitalocean_vpc.this.ip_range
   ssh_pubkey        = var.ssh_pubkey
   allowed_ssh_cidrs = var.allowed_ssh_cidrs
 

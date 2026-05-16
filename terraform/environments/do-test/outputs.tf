@@ -10,12 +10,12 @@ output "worker_nodes" {
 
 output "vpc_id" {
   description = "DigitalOcean VPC UUID."
-  value       = module.infra.vpc_id
+  value       = digitalocean_vpc.this.id
 }
 
 output "vpc_cidr" {
   description = "VPC IP range."
-  value       = module.infra.vpc_cidr
+  value       = digitalocean_vpc.this.ip_range
 }
 
 output "firewall_id" {
