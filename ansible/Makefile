@@ -1,4 +1,4 @@
-# Ansible entry point for the rke2-demo cluster.
+# Ansible entry point for the do-nyc3-rke2-demo cluster.
 #
 # `make inventory` reads the current `tofu output -json` and rewrites
 # inventory/generated.yaml. `make play` brings up the RKE2 cluster. Both
@@ -40,7 +40,7 @@ play: check-tools inventory
 play-check: check-tools inventory
 	ansible-playbook --check --diff $(PLAYBOOK)
 
-KUBECONFIG_PATH := $(HOME)/.kube/rke2-demo
+KUBECONFIG_PATH := $(HOME)/.kube/do-nyc3-rke2-demo
 
 kubeconfig:
 	@if [ -f $(KUBECONFIG_PATH) ]; then \

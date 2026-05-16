@@ -1,4 +1,4 @@
-# SOPS encryption rules for rke2-demo.
+# SOPS encryption rules for do-nyc3-rke2-demo.
 #
 # Two encryption conventions live side by side:
 #   - Our own pattern: `*.enc.<ext>` (yaml, yml, json, env, tfvars). Used for

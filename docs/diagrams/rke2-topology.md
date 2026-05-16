@@ -14,14 +14,14 @@ flowchart TB
             lb[/"DO Load Balancer (INTERNAL)<br/>VPC IP only · 6443, 9345"\]
 
             subgraph cp["Control plane (3× s-2vcpu-4gb)"]
-                cp1["rke2-demo-cp-01<br/>etcd, kube-apiserver"]
-                cp2["rke2-demo-cp-02<br/>etcd, kube-apiserver"]
-                cp3["rke2-demo-cp-03<br/>etcd, kube-apiserver"]
+                cp1["do-nyc3-rke2-demo-cp-01<br/>etcd, kube-apiserver"]
+                cp2["do-nyc3-rke2-demo-cp-02<br/>etcd, kube-apiserver"]
+                cp3["do-nyc3-rke2-demo-cp-03<br/>etcd, kube-apiserver"]
             end
             subgraph wk["Workers (3× s-4vcpu-8gb)"]
-                wk1["rke2-demo-worker-01<br/>kubelet"]
-                wk2["rke2-demo-worker-02<br/>kubelet"]
-                wk3["rke2-demo-worker-03<br/>kubelet"]
+                wk1["do-nyc3-rke2-demo-worker-01<br/>kubelet"]
+                wk2["do-nyc3-rke2-demo-worker-02<br/>kubelet"]
+                wk3["do-nyc3-rke2-demo-worker-03<br/>kubelet"]
             end
         end
     end
@@ -76,7 +76,7 @@ sequenceDiagram
     Note over cp1: probe LB:9345/ping<br/>no response, no local etcd<br/>=> cluster-init: true
     playbook->>cp1: install RKE2, start rke2-server
     cp1-->>playbook: 9345 + 6443 healthy
-    playbook->>operator: fetch + rewrite kubeconfig<br/>=> ~/.kube/rke2-demo
+    playbook->>operator: fetch + rewrite kubeconfig<br/>=> ~/.kube/do-nyc3-rke2-demo
     Note over cp23: probe LB:9345/ping<br/>cp-01 healthy via LB<br/>=> server: https://&lt;LB&gt;:9345
     playbook->>cp23: install RKE2, start rke2-server
     cp23->>lb: join

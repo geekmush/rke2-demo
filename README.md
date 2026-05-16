@@ -1,4 +1,4 @@
-# rke2-demo
+# do-nyc3-rke2-demo
 
 RKE2 + Longhorn cluster bring-up. Test phase on DigitalOcean, production phase on bare metal. Platform components and cluster apps managed via FluxCD using [devopscoop's fluxcd-template](https://github.com/devopscoop/fluxcd-template) (vendored as a git subtree). Cluster operations via `k9s` / OpenLens on the operator workstation.
 
@@ -29,7 +29,7 @@ devopscoop's templates cover FluxCD-managed cluster apps but do not yet ship an 
 
 ## Work tracking
 
-- **GitHub Issues** on `geekmush/rke2-demo` — backlog, bugs, milestones.
+- **GitHub Issues** on `geekmush/do-nyc3-rke2-demo` — backlog, bugs, milestones.
 - **OpenSpec** under `openspec/changes/<name>/` — per-change proposals, design, tasks; each links to its tracking Issue.
 - Production environment uses **Gitea**, which is GitHub-import compatible — anything filed here is portable.
 

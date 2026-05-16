@@ -1,10 +1,23 @@
-# CLAUDE.md — rke2-demo
+# CLAUDE.md — do-nyc3-rke2-demo
 
 Operating instructions for Claude Code in this repository. Read this before doing any non-trivial work.
 
 ## Project goal
 
 Stand up an RKE2 + Longhorn cluster — first on DigitalOcean droplets (test phase), then on bare metal (production phase). End-state cluster apps (including the platform components: cert-manager, ingress-nginx, external-dns, Longhorn, etc.) are managed via FluxCD using [devopscoop's fluxcd-template](https://github.com/devopscoop/fluxcd-template), vendored as a git subtree into this repo. Cluster operations use `k9s` / OpenLens on the operator workstation. Rancher is **deliberately out of scope** at this phase — revisit only if multi-cluster management materializes in Phase 4+. RKE2 deployment artifacts produced here are intended to be contributed back to devopscoop (no RKE2 repo exists there yet — this would be a net-new contribution).
+
+## Cluster identity naming convention
+
+Cluster identities encode **provider + region + role**: `<provider>-<region>-<role>`.
+
+| | Example | Note |
+|---|---|---|
+| Current cluster | `do-nyc3-rke2-demo` | DigitalOcean / nyc3 / rke2-demo |
+| Future bare-metal | `bm-onprem-rke2-prod` (or similar) | bare metal / on-prem / rke2-prod |
+
+The identity is set in `ansible/inventory/group_vars/all/main.yml` as `cluster_name` and in `terraform/environments/do-test/variables.tf` as `project_name` default. Both drive downstream naming (DO resources, kubeconfig path at `~/.kube/<cluster_name>`, external-dns `txtOwnerId`, etc.). Pick identities consistently when adding new clusters.
+
+The local repo directory and GitHub repo name typically match the cluster identity but are not strictly tied; the `cluster_name` variable is the source of truth.
 
 ## Test-phase infrastructure (DigitalOcean)
 

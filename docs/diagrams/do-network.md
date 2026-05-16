@@ -15,14 +15,14 @@ flowchart TB
         subgraph project["Project: RKE2"]
             subgraph vpc["VPC — 10.42.0.0/20 (private)"]
                 subgraph cp["Control plane (3× s-2vcpu-4gb)"]
-                    cp1["rke2-demo-cp-01"]
-                    cp2["rke2-demo-cp-02"]
-                    cp3["rke2-demo-cp-03"]
+                    cp1["do-nyc3-rke2-demo-cp-01"]
+                    cp2["do-nyc3-rke2-demo-cp-02"]
+                    cp3["do-nyc3-rke2-demo-cp-03"]
                 end
                 subgraph wk["Workers (3× s-4vcpu-8gb)"]
-                    wk1["rke2-demo-worker-01"]
-                    wk2["rke2-demo-worker-02"]
-                    wk3["rke2-demo-worker-03"]
+                    wk1["do-nyc3-rke2-demo-worker-01"]
+                    wk2["do-nyc3-rke2-demo-worker-02"]
+                    wk3["do-nyc3-rke2-demo-worker-03"]
                 end
             end
         end
