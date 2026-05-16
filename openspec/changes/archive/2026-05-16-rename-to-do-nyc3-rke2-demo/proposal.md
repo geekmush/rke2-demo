@@ -1,8 +1,8 @@
 # Proposal — rename-to-do-nyc3-rke2-demo
 
-**Tracking issue:** [#20](https://github.com/geekmush/do-nyc3-rke2-demo/issues/20)
+**Tracking issue:** [#20](https://github.com/geekmush/do-nyc3-rke2-demo/issues/20) (closed)
 **Phase:** 1 — DO bring-up (post-Phase-3b polish)
-**Status:** proposed
+**Status:** archived 2026-05-16 -- shipped via [PR #21](https://github.com/geekmush/do-nyc3-rke2-demo/pull/21).
 
 ## Why
 
