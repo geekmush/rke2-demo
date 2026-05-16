@@ -30,7 +30,7 @@ The GitHub repo was already renamed (`geekmush/rke2-demo` -> `geekmush/do-nyc3-r
 - `ansible/scripts/kube-tunnel.sh`:
   - SSH key default `~/.ssh/do_nyc3_rke2_demo_ed25519`
 
-**Vendored upstream files** (same `s/rke2-demo/do-nyc3-rke2-demo/g` pattern as the original `project1-dev -> rke2-demo` rewrite from Phase 3a):
+**Vendored upstream files** (same `s/rke2-demo/do-nyc3-rke2-demo/g` pattern as the original `do-nyc3-rke2-demo -> rke2-demo` rewrite from Phase 3a):
 
 - `apps/external-dns/values.yaml` (txtOwnerId, covered above)
 - `apps/metallb-custom-resources/*.yaml` (3 files; references in IP-pool / l2-advertisement / api-endpointslice)

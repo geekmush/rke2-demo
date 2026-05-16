@@ -16,7 +16,7 @@ Implementation order. Suggested 3-commit PR split per task 14.
 
 ## Vendored upstream files (global rewrite)
 
-- [x] 8. Run global `sed s/rke2-demo/do-nyc3-rke2-demo/g` across `apps/` and `variables.sh`, excluding `deploy.sh`. Same pattern as Phase 3a's `project1-dev -> rke2-demo` rewrite.
+- [x] 8. Run global `sed s/rke2-demo/do-nyc3-rke2-demo/g` across `apps/` and `variables.sh`, excluding `deploy.sh`. Same pattern as Phase 3a's `do-nyc3-rke2-demo -> rke2-demo` rewrite.
 - [x] 9. Spot-check `apps/metallb-custom-resources/*.yaml` + `apps/nxrm-ha/values.yaml` show the new name.
 
 ## Documentation
