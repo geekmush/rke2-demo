@@ -12,7 +12,7 @@ resource "digitalocean_droplet" "cp" {
   region   = var.region
   size     = var.cp_size
   image    = var.image_slug
-  vpc_uuid = digitalocean_vpc.main.id
+  vpc_uuid = var.vpc_id
 
   ssh_keys = [digitalocean_ssh_key.operator.fingerprint]
 
@@ -36,7 +36,7 @@ resource "digitalocean_droplet" "worker" {
   region   = var.region
   size     = var.worker_size
   image    = var.image_slug
-  vpc_uuid = digitalocean_vpc.main.id
+  vpc_uuid = var.vpc_id
 
   ssh_keys = [digitalocean_ssh_key.operator.fingerprint]
 

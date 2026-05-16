@@ -169,7 +169,9 @@ Six droplets at the test sizes cost ~$0.30/hour. Tear down when you're not activ
 make destroy
 ```
 
-State is preserved locally — next `make apply` recreates everything. The DO Project itself is **not** destroyed (intentional; managed in the UI).
+State is preserved locally — next `make apply` recreates everything. The DO Project itself is **not** destroyed (intentional; managed in the UI). The VPC also persists between destroy cycles: it's declared at the environment level (`terraform/environments/do-test/vpc.tf`) with `lifecycle.prevent_destroy = true`, and `make destroy` scopes itself to `module.infra` so the VPC is excluded from the destroy plan. DO refuses to delete the regional default VPC anyway; this design turns that constraint into a clean teardown instead of a 2-minute hang + non-zero exit. See issue #26.
+
+**Upgrading from the pre-#26 layout** (one-time, only if you have a `tofu state` snapshot that still places the VPC inside the module): `tofu -chdir=environments/do-test state mv module.infra.digitalocean_vpc.main digitalocean_vpc.this`. Verify with `make plan` — it should report no diff for the VPC.
 
 ### Tear-down checklist
 

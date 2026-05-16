@@ -85,11 +85,17 @@ apply: check-tools check-secrets check-tfvars
 	sops --decrypt $(SECRETS) > "$$tmp"; \
 	$(TOFU) apply -var-file="$$(realpath "$$tmp")"
 
+# Destroy only the do-droplet-infra module's resources (droplets, LB, FW,
+# volumes, project links). The environment-level digitalocean_vpc.this is
+# excluded by virtue of not being inside the targeted module — and is
+# protected by lifecycle.prevent_destroy regardless. DO refuses to delete
+# the regional default VPC anyway; this scoping turns a 2-minute hang +
+# non-zero exit into a clean teardown. See issue #26.
 destroy: check-tools check-secrets check-tfvars
 	@tmp=$$(mktemp --suffix=.tfvars); \
 	trap 'rm -f "$$tmp"' EXIT; \
 	sops --decrypt $(SECRETS) > "$$tmp"; \
-	$(TOFU) destroy -var-file="$$(realpath "$$tmp")"
+	$(TOFU) destroy -target='module.infra' -var-file="$$(realpath "$$tmp")"
 
 output:
 	$(TOFU) output

@@ -37,7 +37,7 @@ resource "digitalocean_firewall" "cluster" {
     content {
       protocol         = "tcp"
       port_range       = inbound_rule.value.port
-      source_addresses = [digitalocean_vpc.main.ip_range]
+      source_addresses = [var.vpc_ip_range]
     }
   }
 
@@ -47,14 +47,14 @@ resource "digitalocean_firewall" "cluster" {
     content {
       protocol         = "udp"
       port_range       = inbound_rule.value.port
-      source_addresses = [digitalocean_vpc.main.ip_range]
+      source_addresses = [var.vpc_ip_range]
     }
   }
 
   # ICMP inside the VPC — useful for ping/MTR during debugging.
   inbound_rule {
     protocol         = "icmp"
-    source_addresses = [digitalocean_vpc.main.ip_range]
+    source_addresses = [var.vpc_ip_range]
   }
 
   # Egress — allow all. We are not trying to be a perimeter firewall here;
