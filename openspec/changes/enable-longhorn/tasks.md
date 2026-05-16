@@ -56,6 +56,8 @@ Implementation order. Group 1 lands in a PR with no cluster running. Group 2 run
 
 ## Group 2 — at-bring-up validation (cluster running)
 
+> **Pre-flight:** [#24](https://github.com/geekmush/do-nyc3-rke2-demo/issues/24) (`deploy.sh` second-cluster bring-up) and [#23](https://github.com/geekmush/do-nyc3-rke2-demo/issues/23) (sed-clobber of archive docs) both bite on Group 2 if unfixed. Resolve both before running, or follow the manual recovery captured in the 2026-05-16 unattended-test summary (re-apply `flux/flux-system/` via `kubectl apply -k`, then `flux bootstrap github`, then re-add the SOPS decryption block to `gotk-sync.yaml`).
+
 - [ ] 18. `cd terraform/environments/do-test && make apply`. Confirm 6 droplets + 3 volumes + 1 internal LB. No drift.
 - [ ] 19. `cd ansible && make inventory && make play`. Confirm `longhorn_disk_prep` runs successfully on all 3 workers (`changed` on first pass, `changed=0` on rerun).
 - [ ] 20. SSH into each worker. Verify:

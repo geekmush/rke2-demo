@@ -65,6 +65,15 @@ Cluster is currently destroyed for cost savings. Implementation tasks split into
 
 Tracking issue (TBD) stays open until the at-bring-up validation completes successfully, then archive.
 
+## Known blockers / related work
+
+These surfaced in the 2026-05-16 unattended end-to-end test and affect the Group 2 cluster bring-up. Resolve or work around before the at-bring-up validation:
+
+- **[#24](https://github.com/geekmush/do-nyc3-rke2-demo/issues/24) — `deploy.sh` second-cluster bring-up fails** (HIGH). Skips `flux bootstrap` when `gotk-sync.yaml` is already populated, but a fresh cluster has no `flux-system` namespace. Workaround documented from the test run; ideal fix lands ahead of this change.
+- **[#23](https://github.com/geekmush/do-nyc3-rke2-demo/issues/23) — `deploy.sh` sed-clobbers archived OpenSpec docs.** Will corrupt this very `enable-longhorn` proposal on the next `deploy.sh` run unless fixed first (the script's `grep` for `project1-dev` doesn't exclude `openspec/changes/archive/`). Trivial fix; should land before this change to keep history clean.
+- **[#25](https://github.com/geekmush/do-nyc3-rke2-demo/issues/25) — DO Cloud Controller Manager not installed.** Not a Longhorn blocker (PVCs work without LoadBalancer services), but the validation step's "stateful pod survives reschedule with data intact" doesn't exercise public-facing traffic. Independent — sequence either before or after this change.
+- **[#26](https://github.com/geekmush/do-nyc3-rke2-demo/issues/26) — default-VPC destroy 403** (LOW). Cosmetic. Makes `make destroy` exit non-zero after Group 2 validation. Doesn't block the test, just adds noise.
+
 ## Tracking
 
 Tracking issue: TBD. Predecessor: `add-do-block-storage` (volumes), `add-fluxcd-template-vendor` (Longhorn HelmRelease), `add-fluxcd-bootstrap` (rest of platform). Successor: Phase 4 bare-metal migration (uses Longhorn as the proven storage layer; bare-metal disks replace DO volumes without changing the Longhorn config above).
