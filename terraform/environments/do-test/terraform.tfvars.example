@@ -9,12 +9,12 @@
 
 # Required — paste your OpenSSH public key. Generate one if you do not have one
 # dedicated to this project:
-#   ssh-keygen -t ed25519 -C "rke2-demo operator" -f ~/.ssh/rke2_demo_ed25519
-#   cat ~/.ssh/rke2_demo_ed25519.pub
+#   ssh-keygen -t ed25519 -C "do-nyc3-rke2-demo operator" -f ~/.ssh/do_nyc3_rke2_demo_ed25519
+#   cat ~/.ssh/do_nyc3_rke2_demo_ed25519.pub
 ssh_pubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... operator@workstation"
 
 # Optional overrides (defaults shown):
-# project_name    = "rke2-demo"        # resource-name prefix in DO
+# project_name    = "do-nyc3-rke2-demo"  # resource-name prefix in DO
 # region          = "nyc3"
 # vpc_cidr        = "10.42.0.0/20"   # overrides default; RKE2 pod/service CIDRs are remapped in ansible/inventory/group_vars/all/main.yml
 # cp_count        = 3

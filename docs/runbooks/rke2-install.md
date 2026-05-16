@@ -67,7 +67,7 @@ What happens:
    - everyone else -> `server: https://<cp_endpoint>:9345` (join)
    - writes config, installs RKE2 (pinned version), enables/starts the service
    - waits for `:9345` and `:6443` to respond
-   - on the bootstrap CP: fetches `/etc/rancher/rke2/rke2.yaml`, rewrites the `server:` URL to `https://127.0.0.1:6443`, writes it to `~/.kube/rke2-demo` (mode 0600)
+   - on the bootstrap CP: fetches `/etc/rancher/rke2/rke2.yaml`, rewrites the `server:` URL to `https://127.0.0.1:6443`, writes it to `~/.kube/do-nyc3-rke2-demo` (mode 0600)
 3. **`rke2_agent`** runs in parallel on the 3 workers -- install + start.
 
 Expected timing: 7-10 min for a cold install (most of it pulling RKE2 images). A re-run on a healthy cluster is 2-3 min and reports zero changes (other than kubeconfig if you've moved it).
@@ -99,7 +99,7 @@ kubectl get nodes -o wide
 Or do it manually:
 
 ```bash
-export KUBECONFIG="$HOME/.kube/rke2-demo"
+export KUBECONFIG="$HOME/.kube/do-nyc3-rke2-demo"
 kubectl get nodes -o wide
 kubectl get pods -A
 ```
@@ -111,13 +111,13 @@ The kubeconfig's `server:` URL is `https://127.0.0.1:6443`. The cert includes `1
 Inside the tunnel:
 
 ```bash
-kubectl --kubeconfig ~/.kube/rke2-demo get nodes
+kubectl --kubeconfig ~/.kube/do-nyc3-rke2-demo get nodes
 # expect: 3 Ready control-plane,etcd + 3 Ready <none>
 
-kubectl --kubeconfig ~/.kube/rke2-demo -n kube-system get pods | grep etcd
+kubectl --kubeconfig ~/.kube/do-nyc3-rke2-demo -n kube-system get pods | grep etcd
 # expect: 3 etcd-* pods, all 1/1 Running
 
-kubectl --kubeconfig ~/.kube/rke2-demo get pods -A --no-headers | awk '$4 != "Running" && $4 != "Completed" {print}'
+kubectl --kubeconfig ~/.kube/do-nyc3-rke2-demo get pods -A --no-headers | awk '$4 != "Running" && $4 != "Completed" {print}'
 # expect: nothing
 ```
 
@@ -129,10 +129,10 @@ Re-rolling a worker (worker-03 in this example):
 tofu -chdir=terraform/environments/do-test taint 'module.infra.digitalocean_droplet.worker[2]'
 make -C terraform apply              # destroys worker-03, creates a new one
 make -C ansible inventory             # picks up the new IP
-make -C ansible play --limit rke2-demo-worker-03
+make -C ansible play --limit do-nyc3-rke2-demo-worker-03
 ```
 
-Re-rolling a non-bootstrap CP (cp-02 or cp-03) is the same with `digitalocean_droplet.cp[N]` and `--limit rke2-demo-cp-0N`. The role probes the LB, sees the cluster is up, and joins.
+Re-rolling a non-bootstrap CP (cp-02 or cp-03) is the same with `digitalocean_droplet.cp[N]` and `--limit do-nyc3-rke2-demo-cp-0N`. The role probes the LB, sees the cluster is up, and joins.
 
 Re-rolling cp-01 specifically: same flow. The role checks for local `/var/lib/rancher/rke2/server/db/etcd` -- the recreated cp-01 has no etcd directory, the LB has healthy cp-02/cp-03 backends -> cp-01 takes the `server:` path and joins the existing cluster (rather than re-initing a fresh one).
 
@@ -182,7 +182,7 @@ If `ping` fails between two CPs but works to a worker, the most likely cause is 
 
 ### "I rebuilt my workstation -- where's the kubeconfig?"
 
-`~/.kube/rke2-demo` lives in the operator's home directory -- outside the repo working tree -- so a fresh workstation has no copy. Get one by re-running the play; the bootstrap-CP-only fetch fires on every run:
+`~/.kube/do-nyc3-rke2-demo` lives in the operator's home directory -- outside the repo working tree -- so a fresh workstation has no copy. Get one by re-running the play; the bootstrap-CP-only fetch fires on every run:
 
 ```bash
 make -C ansible play
@@ -191,9 +191,9 @@ make -C ansible play
 Alternatively, copy it directly:
 
 ```bash
-scp -i ~/.ssh/rke2_demo_ed25519 root@<any-cp-public>:/etc/rancher/rke2/rke2.yaml ~/.kube/rke2-demo
-sed -i 's|https://127.0.0.1:6443|https://127.0.0.1:6443|' ~/.kube/rke2-demo  # no-op; safe
-chmod 600 ~/.kube/rke2-demo
+scp -i ~/.ssh/do_nyc3_rke2_demo_ed25519 root@<any-cp-public>:/etc/rancher/rke2/rke2.yaml ~/.kube/do-nyc3-rke2-demo
+sed -i 's|https://127.0.0.1:6443|https://127.0.0.1:6443|' ~/.kube/do-nyc3-rke2-demo  # no-op; safe
+chmod 600 ~/.kube/do-nyc3-rke2-demo
 ```
 
 (The kubeconfig is already pointed at `127.0.0.1:6443` -- the `sed` is harmless.)
@@ -204,7 +204,7 @@ chmod 600 ~/.kube/rke2-demo
 
 - Network from your workstation to DO: `curl -sS https://api.digitalocean.com/v2/account -H "Authorization: Bearer $DO_TOKEN"` works?
 - All 3 CPs still exist: `make -C terraform output`
-- SSH key in `~/.ssh/rke2_demo_ed25519` matches what was applied: `ssh-keygen -lf ~/.ssh/rke2_demo_ed25519.pub` and compare against `tofu output -json | jq .ssh_key_fingerprint`.
+- SSH key in `~/.ssh/do_nyc3_rke2_demo_ed25519` matches what was applied: `ssh-keygen -lf ~/.ssh/do_nyc3_rke2_demo_ed25519.pub` and compare against `tofu output -json | jq .ssh_key_fingerprint`.
 
 ### Lockout fallback (no tunnel path works)
 

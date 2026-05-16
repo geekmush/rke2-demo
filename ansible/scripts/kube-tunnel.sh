@@ -19,14 +19,14 @@
 #   ansible/scripts/kube-tunnel.sh --once     # try one CP and exit on failure
 #
 # In another terminal:
-#   export KUBECONFIG="$HOME/.kube/rke2-demo"
+#   export KUBECONFIG="$HOME/.kube/do-nyc3-rke2-demo"
 #   kubectl get nodes
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.."; pwd)"
 tofu_env="$repo_root/terraform/environments/do-test"
-ssh_key="${RKE2_SSH_KEY:-$HOME/.ssh/rke2_demo_ed25519}"
+ssh_key="${RKE2_SSH_KEY:-$HOME/.ssh/do_nyc3_rke2_demo_ed25519}"
 local_port="${RKE2_TUNNEL_PORT:-6443}"
 known_hosts="${RKE2_KNOWN_HOSTS:-$HOME/.ssh/known_hosts.rke2demo}"
 

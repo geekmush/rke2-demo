@@ -20,11 +20,11 @@ DigitalOcean side:
 
 DNS:
 
-- `rke2-demo.escapekey.org` delegation at Dreamhost may or may not be propagated. **Phase 3b does not block on this** -- the `letsencrypt` ClusterIssuer is created but cannot issue real certs until propagation completes. The `selfsigned` ClusterIssuer covers cert-manager-works verification independently.
+- `do-nyc3-rke2-demo.escapekey.org` delegation at Dreamhost may or may not be propagated. **Phase 3b does not block on this** -- the `letsencrypt` ClusterIssuer is created but cannot issue real certs until propagation completes. The `selfsigned` ClusterIssuer covers cert-manager-works verification independently.
 
 GitHub:
 
-- A fresh fine-grained Personal Access Token with `Administration: Read and write` + `Contents: Read and write` permissions on `geekmush/rke2-demo`. Single-use during bootstrap; consider a 7-day expiry. Generate at https://github.com/settings/tokens?type=beta.
+- A fresh fine-grained Personal Access Token with `Administration: Read and write` + `Contents: Read and write` permissions on `geekmush/do-nyc3-rke2-demo`. Single-use during bootstrap; consider a 7-day expiry. Generate at https://github.com/settings/tokens?type=beta.
 - **Do not paste the token into chat or commit it anywhere.** Read into a shell variable via `read -s` (suppresses echo) so it doesn't enter shell history.
 
 ## One-time setup
@@ -42,7 +42,7 @@ export GITHUB_TOKEN
 Verify scope (does not reveal the token):
 
 ```bash
-curl -sS -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/geekmush/rke2-demo \
+curl -sS -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/geekmush/do-nyc3-rke2-demo \
   | jq '{permissions: .permissions}'
 # expected: admin/push/pull all true
 ```
@@ -59,8 +59,8 @@ echo "SOPS_AGE_KEY_FILE=$SOPS_AGE_KEY_FILE"
 Expected:
 
 ```
-cluster_name=rke2-demo
-KUBECONFIG=/home/<you>/.kube/rke2-demo
+cluster_name=do-nyc3-rke2-demo
+KUBECONFIG=/home/<you>/.kube/do-nyc3-rke2-demo
 SOPS_AGE_KEY_FILE=/home/<you>/.config/sops/age/keys.txt
 ```
 
@@ -91,7 +91,7 @@ What happens, narrated:
 
 1. **Tool fetch.** `kubectl`, `flux`, `sops`, `yq` downloaded into `bin/` (versions pinned in `variables.sh`). Skipped if already present.
 2. **sops-age Secret install.** `sops -d flux/flux-system/sops-age.secrets.yaml | kubectl apply -f -` -- the operator's age private key lands in `flux-system` namespace as a Secret named `sops-age`. Flux's `kustomize-controller` reads this Secret to decrypt every other `*.secrets.yaml` in the repo at reconciliation time.
-3. **`flux bootstrap github`.** Installs the 6 Flux controllers cluster-side, creates a deploy key on `geekmush/rke2-demo`, generates `flux/flux-system/gotk-components.yaml` + `gotk-sync.yaml`, commits + pushes to `main` via the deploy key.
+3. **`flux bootstrap github`.** Installs the 6 Flux controllers cluster-side, creates a deploy key on `geekmush/do-nyc3-rke2-demo`, generates `flux/flux-system/gotk-components.yaml` + `gotk-sync.yaml`, commits + pushes to `main` via the deploy key.
 4. **Patch `gotk-sync.yaml`** -- adds `spec.decryption: {provider: sops, secretRef: {name: sops-age}}`. Commits the patch.
 5. **Enable apps** -- appends `core_app_list` entries to `flux/flux-system/kustomization.yaml`'s `.resources`. For us: cert-manager-custom-resources, cert-manager, external-dns, imagepolicies, imagerepositories, imageupdateautomation, ingress-nginx, sops-age.secrets. **No longhorn** (rke2 case is intentionally empty for Phase 3b).
 6. **`encrypt_secrets.sh`** -- re-encrypts any `*.decrypted` files left in the working tree. Useful if you've been editing `helm_secrets.yaml.decrypted` placeholders.
@@ -243,7 +243,7 @@ kubectl delete secret test-selfsigned-tls 2>/dev/null
 
 `flux bootstrap` is idempotent on retry, **but** if the run partially created the deploy key on GitHub, retry can fail with "deploy key already exists." Fix:
 
-1. https://github.com/geekmush/rke2-demo/settings/keys -- delete the half-created key (look for one named `flux` or similar).
+1. https://github.com/geekmush/do-nyc3-rke2-demo/settings/keys -- delete the half-created key (look for one named `flux` or similar).
 2. `git pull` -- pick up any flux-authored commits that did land.
 3. Re-run `./deploy.sh`.
 

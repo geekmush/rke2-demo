@@ -133,8 +133,8 @@ Then add the printed public key to `.sops.yaml`'s `age:` field (comma-separated)
 
 ```bash
 mkdir -p ~/code && cd ~/code
-git clone git@github.com:geekmush/rke2-demo.git
-cd rke2-demo
+git clone git@github.com:geekmush/do-nyc3-rke2-demo.git
+cd do-nyc3-rke2-demo
 ```
 
 ## 10. Verify the SOPS round-trip
@@ -142,7 +142,7 @@ cd rke2-demo
 Make sure encryption is actually working before doing real work:
 
 ```bash
-cd ~/code/rke2-demo
+cd ~/code/do-nyc3-rke2-demo
 cat > /tmp/smoke.enc.yaml <<'EOF'
 apiVersion: v1
 kind: Secret
@@ -171,14 +171,14 @@ On the **client** (Windows / macOS / another Linux):
 2. Install the **Remote - SSH** extension (`ms-vscode-remote.remote-ssh`).
 3. `F1` → "Remote-SSH: Connect to Host..." → `geekmush@192.168.5.88`.
 4. After connection, install on the remote: **Claude Code** extension and any language extensions you want (Tofu, YAML, Mermaid, Markdown All in One).
-5. `File → Open Folder...` → `~/code/rke2-demo`.
+5. `File → Open Folder...` → `~/code/do-nyc3-rke2-demo`.
 
 VS Code will auto-install a `~/.vscode-server` userland and run all extensions there. Files, terminal, Claude Code — everything runs on the Linux box. Your Windows machine is now just a display.
 
 To launch Claude Code from inside the integrated terminal:
 
 ```bash
-cd ~/code/rke2-demo
+cd ~/code/do-nyc3-rke2-demo
 claude
 ```
 
@@ -187,7 +187,7 @@ claude
 Before doing real work, sanity-check:
 
 ```bash
-cd ~/code/rke2-demo
+cd ~/code/do-nyc3-rke2-demo
 # .sops.yaml should list your operator key(s)
 cat .sops.yaml
 # memory should be readable in-repo

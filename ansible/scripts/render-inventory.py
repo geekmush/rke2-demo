@@ -20,14 +20,14 @@ Output:
   all:
     vars:
       ansible_user: root
-      ansible_ssh_private_key_file: ~/.ssh/rke2_demo_ed25519
+      ansible_ssh_private_key_file: ~/.ssh/do_nyc3_rke2_demo_ed25519
       cp_endpoint: <IP>
       vpc_cidr:    <CIDR>
       region:      <slug>
     children:
       rke2_servers:
         hosts:
-          rke2-demo-cp-01:
+          do-nyc3-rke2-demo-cp-01:
             ansible_host: <public_ip>
             private_ip:   <private_ip>
             node_role:    control-plane
@@ -92,7 +92,7 @@ def main() -> int:
     p.add_argument("input", nargs="?", help="Path to `tofu output -json` file. Reads stdin if omitted.")
     p.add_argument(
         "--key",
-        default="~/.ssh/rke2_demo_ed25519",
+        default="~/.ssh/do_nyc3_rke2_demo_ed25519",
         help="Operator SSH private key path (default: %(default)s).",
     )
     p.add_argument(

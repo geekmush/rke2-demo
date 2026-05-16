@@ -2,7 +2,7 @@
 inventory/generated.yaml
 
 # Belt-and-braces: artifacts/ used to hold the operator kubeconfig before it
-# was moved to ~/.kube/rke2-demo. Keep the rule so a future stray write
+# was moved to ~/.kube/do-nyc3-rke2-demo. Keep the rule so a future stray write
 # inside the repo working tree still doesn't escape into git.
 artifacts/
 

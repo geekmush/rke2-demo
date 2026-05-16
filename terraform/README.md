@@ -1,6 +1,6 @@
 # terraform/
 
-OpenTofu modules and root configurations for the rke2-demo cluster substrate.
+OpenTofu modules and root configurations for the do-nyc3-rke2-demo cluster substrate.
 
 > OpenTofu, not Terraform — per groundrule #2 in [`../CLAUDE.md`](../CLAUDE.md).
 

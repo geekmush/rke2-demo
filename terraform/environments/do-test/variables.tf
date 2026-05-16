@@ -5,9 +5,9 @@ variable "do_token" {
 }
 
 variable "project_name" {
-  description = "Resource-name prefix."
+  description = "Resource-name prefix. Drives DO droplet / LB / firewall / volume names; matches the cluster identity in ansible/inventory/group_vars/all/main.yml's cluster_name."
   type        = string
-  default     = "rke2-demo"
+  default     = "do-nyc3-rke2-demo"
 }
 
 variable "region" {

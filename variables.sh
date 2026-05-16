@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-export KUBECONFIG="${HOME}/.kube/rke2-demo"
-export cluster_name=rke2-demo
+export KUBECONFIG="${HOME}/.kube/do-nyc3-rke2-demo"
+export cluster_name=do-nyc3-rke2-demo
 export flux_path=flux
 export git_owner=geekmush
 export git_platform=github
-export git_repo=rke2-demo
+export git_repo=do-nyc3-rke2-demo
 export k8s_platform=rke2 # rke2, eks, k0s, talos
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -14,7 +14,7 @@ elif [[ "$OSTYPE" == "linux"* ]]; then
   export sops_dir="${HOME}/.config/sops/age"
 fi
 
-# rke2-demo's age keys.txt is plaintext (per docs/runbooks/linux-workstation-setup.md
+# do-nyc3-rke2-demo's age keys.txt is plaintext (per docs/runbooks/linux-workstation-setup.md
 # step 8). The upstream template assumes age-passphrase-encrypted keys.txt and uses
 # `export SOPS_AGE_KEY=$(age -d ...)` to materialize the key in-shell -- which errors
 # on a plaintext file. We use SOPS_AGE_KEY_FILE instead: SOPS reads the file directly

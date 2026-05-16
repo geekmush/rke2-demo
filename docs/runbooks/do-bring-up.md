@@ -23,8 +23,8 @@ You have:
 
 - An OpenSSH **public** key string for the operator key. Generate one if needed:
   ```bash
-  ssh-keygen -t ed25519 -C "rke2-demo operator" -f ~/.ssh/rke2_demo_ed25519
-  cat ~/.ssh/rke2_demo_ed25519.pub
+  ssh-keygen -t ed25519 -C "do-nyc3-rke2-demo operator" -f ~/.ssh/do_nyc3_rke2_demo_ed25519
+  cat ~/.ssh/do_nyc3_rke2_demo_ed25519.pub
   ```
   Back up the private key out-of-band — losing it means re-rolling droplets to get back in.
 
@@ -121,7 +121,7 @@ Prompts for `yes` confirmation before creating resources. Takes ~3–5 minutes f
 make output                # show outputs (IPs, IDs, fingerprint)
 
 # Pick a node and SSH in (replace IP with one from `make output`).
-ssh -i ~/.ssh/rke2_demo_ed25519 root@<public_ip>
+ssh -i ~/.ssh/do_nyc3_rke2_demo_ed25519 root@<public_ip>
 
 # On the droplet — confirm cloud-init ran:
 sudo swapon --show                                  # empty == swap off OK
@@ -140,16 +140,16 @@ Stable device paths are surfaced as a Tofu output:
 ```bash
 make -C terraform output worker_longhorn_devices
 # {
-#   "rke2-demo-worker-01" = "/dev/disk/by-id/scsi-0DO_Volume_rke2-demo-worker-01-longhorn"
-#   "rke2-demo-worker-02" = "/dev/disk/by-id/scsi-0DO_Volume_rke2-demo-worker-02-longhorn"
-#   "rke2-demo-worker-03" = "/dev/disk/by-id/scsi-0DO_Volume_rke2-demo-worker-03-longhorn"
+#   "do-nyc3-rke2-demo-worker-01" = "/dev/disk/by-id/scsi-0DO_Volume_do-nyc3-rke2-demo-worker-01-longhorn"
+#   "do-nyc3-rke2-demo-worker-02" = "/dev/disk/by-id/scsi-0DO_Volume_do-nyc3-rke2-demo-worker-02-longhorn"
+#   "do-nyc3-rke2-demo-worker-03" = "/dev/disk/by-id/scsi-0DO_Volume_do-nyc3-rke2-demo-worker-03-longhorn"
 # }
 ```
 
 Verify on a worker:
 
 ```bash
-ssh -i ~/.ssh/rke2_demo_ed25519 root@<worker-public-ip>
+ssh -i ~/.ssh/do_nyc3_rke2_demo_ed25519 root@<worker-public-ip>
 lsblk                                                          # expect a 50G sda with no MOUNTPOINTS
 ls -l /dev/disk/by-id/scsi-0DO_Volume_*-longhorn               # symlink resolves to /dev/sda
 mount | grep sda                                               # nothing -- raw, unmounted
