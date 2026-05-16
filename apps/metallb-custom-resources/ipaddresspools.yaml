@@ -13,7 +13,7 @@
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: rke2-demo
+  name: do-nyc3-rke2-demo
   namespace: metallb
 spec:
   addresses:

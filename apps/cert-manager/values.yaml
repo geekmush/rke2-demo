@@ -4,7 +4,7 @@ crds:
   enabled: true
 
 # Gateway API support is off because we don't have the Gateway API CRDs
-# installed (rke2-demo uses ingress-nginx-style routing for now). Enabling
+# installed (do-nyc3-rke2-demo uses ingress-nginx-style routing for now). Enabling
 # this without the CRDs makes cert-manager's webhook fail readiness on start.
 # Re-enable here when/if Gateway API lands in this cluster.
 # https://gateway.envoyproxy.io/docs/tasks/security/tls-cert-manager/#deploying-cert-manager
