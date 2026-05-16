@@ -3,10 +3,12 @@
 # Tokens and other secrets live in secrets.yaml (SOPS-encrypted) under
 # the devopscoop/fluxcd-template convention.
 
-# Cluster identity. Used for the kubeconfig path, will also feed downstream
-# Flux configuration. Stays as `rke2-demo` for this test environment; Phase
-# 4 (bare metal) introduces a different cluster name.
-cluster_name: rke2-demo
+# Cluster identity. Used for the kubeconfig path, drives Tofu resource
+# naming via `project_name`, and feeds Flux configuration. Encodes
+# provider + region + role (`do-nyc3-rke2-demo` = DigitalOcean / nyc3 /
+# rke2-demo). Phase 4 bare-metal will pick something following the same
+# convention (e.g. `bm-onprem-rke2-prod`).
+cluster_name: do-nyc3-rke2-demo
 
 # RKE2 release. Pinned to the current stable channel as of 2026-05-14.
 # Update by checking https://update.rke2.io/v1-release/channels (stable).
