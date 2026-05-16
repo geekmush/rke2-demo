@@ -20,7 +20,7 @@ DigitalOcean side:
 
 DNS:
 
-- `do-nyc3-rke2-demo.escapekey.org` delegation at Dreamhost may or may not be propagated. **Phase 3b does not block on this** -- the `letsencrypt` ClusterIssuer is created but cannot issue real certs until propagation completes. The `selfsigned` ClusterIssuer covers cert-manager-works verification independently.
+- `escapekey.org` is hosted at DigitalOcean (whole zone, not a delegated subdomain) per [`dns-migration-to-do.md`](dns-migration-to-do.md). The DO PAT in `digitalocean-dns.secrets.yaml` already has DNS write authority on the zone, so `external-dns` and the `letsencrypt` DNS-01 ClusterIssuer work end-to-end. The `selfsigned` ClusterIssuer remains as a no-DNS-required fallback for cert-manager-works verification.
 
 GitHub:
 

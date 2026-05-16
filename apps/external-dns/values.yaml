@@ -13,6 +13,14 @@ policy: sync
 # If we have multiple k8s clusters writing to the same DNS zone, each external-dns needs a way to identify the records it owns. And since we can only have one external-dns provider per cluster, the setting this to the cluster name seems reasonable.
 txtOwnerId: do-nyc3-rke2-demo
 
+# Scope external-dns to the zones it should actually manage. Without this,
+# external-dns enumerates every zone the DO PAT can see and would claim
+# ownership of any future zone added to the account. The PAT is full-access
+# (shared with Tofu), so this filter is the only safeguard. Add new zones
+# here intentionally as the account grows. See docs/runbooks/dns-migration-to-do.md.
+domainFilters:
+  - escapekey.org
+
 # DigitalOcean config based on:
 # https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/digitalocean.md
 # DO is a built-in external-dns provider, not a webhook-based one. The chart
