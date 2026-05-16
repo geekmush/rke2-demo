@@ -100,10 +100,30 @@ if ! git diff HEAD --quiet; then
   git push
 fi
 
-# Checking to see if gotk-sync.yaml has been generated yet...
+# Decide whether to run `flux bootstrap`.
+#
+# Two conditions trigger bootstrap:
+#   1. Repo has never been bootstrapped: gotk-sync.yaml is the single-line
+#      placeholder that ships with this template.
+#   2. Repo is bootstrapped from a PRIOR cluster, but THIS cluster is fresh:
+#      flux-system manifests are committed, but the cluster has no
+#      flux-system namespace yet. Without this check the script would skip
+#      bootstrap, then fail later when `kubectl apply` tries to write the
+#      sops-age Secret into a namespace that doesn't exist. (See issue #24.)
+#
+# `flux bootstrap` is itself idempotent against an already-bootstrapped
+# cluster + repo, but we avoid the extra GitHub API churn / commit when
+# we can.
+#
 # Using image-reflector-controller and image-automation-controller, because they're dope as heck, son! https://fluxcd.io/flux/guides/image-update/
 # --read-write-key is needed by the image-automation-controller
+needs_bootstrap=false
 if [[ "$(cat flux/flux-system/gotk-sync.yaml | wc -l)" == "1" ]]; then
+  needs_bootstrap=true
+elif ! kubectl get ns flux-system >/dev/null 2>&1; then
+  needs_bootstrap=true
+fi
+if $needs_bootstrap; then
   case "$git_platform" in
     github)
       flux bootstrap github \
@@ -142,19 +162,39 @@ if ! git diff HEAD --quiet; then
   git push
 fi
 
-# Add SOPS AGE secret to the cluster
-sops -d flux/flux-system/sops-age.secrets.yaml | kubectl apply -f -
-
-# Add decryption block to gotk-sync.yaml, so that the flux-system Kustomization can decrypt SOPS-encrypted files.
+# Add the SOPS decryption block to gotk-sync.yaml BEFORE applying the sops-age
+# Secret. Reasoning (see issue #24):
+#
+#   `flux bootstrap` regenerates gotk-sync.yaml without a decryption block.
+#   In that state, when kustomize-controller reconciles the flux-system
+#   Kustomization, it applies the SOPS-wrapped Secret manifest literally --
+#   writing the ENC[...] ciphertext into the cluster's sops-age Secret. If we
+#   then `kubectl apply` the plaintext over it, the controller's next
+#   reconcile will overwrite our plaintext with the ciphertext again. The
+#   safe order is:
+#     1. add decryption block to gotk-sync.yaml + commit + push  (here)
+#     2. apply plaintext sops-age Secret                          (next)
+#     3. reconcile -- controller now decrypts before applying.
+#
+# Step 1 may briefly leave the Kustomization stuck on "secret 'sops-age' not
+# found" until step 2 runs; that's a transient error, not a data corruption.
 yq -i '(select(.kind == "Kustomization") | .spec.decryption) = {"provider": "sops", "secretRef": {"name": "sops-age"}}' flux/flux-system/gotk-sync.yaml
 
 git add flux/flux-system/gotk-sync.yaml
 if ! git diff HEAD --quiet; then
   git commit -nm "Adding decryption to gotk-sync.yaml"
   git push
-  flux reconcile source git flux-system
-  flux reconcile kustomization flux-system
 fi
+
+# Apply the SOPS AGE secret to the cluster. With the decryption block now in
+# the repo, the next reconcile will decrypt the SOPS-wrapped manifest in git
+# and confirm-rather-than-overwrite this plaintext.
+sops -d flux/flux-system/sops-age.secrets.yaml | kubectl apply -f -
+
+# Force-reconcile so the Kustomization recovers from any prior "secret not
+# found" failure in step 1 without waiting for the 10m retry interval.
+flux reconcile source git flux-system
+flux reconcile kustomization flux-system
 
 # Open the Flux floodgates! Enable everything!
 core_app_list="cert-manager-custom-resources.yaml cert-manager.yaml external-dns.yaml imagepolicies.yaml imagerepositories.yaml imageupdateautomation.yaml ingress-nginx.yaml sops-age.secrets.yaml"
