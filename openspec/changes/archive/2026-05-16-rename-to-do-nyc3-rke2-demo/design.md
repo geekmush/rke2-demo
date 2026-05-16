@@ -34,7 +34,7 @@ The Tofu `project_name` default feeds resource naming via `format("%s-cp-%02d", 
 
 ### Vendored upstream files
 
-These were touched during Phase 3a with `s/do-nyc3-rke2-demo/rke2-demo/g`. Now we do the same shape:
+These were touched during Phase 3a with `s/project1-dev/rke2-demo/g`. Now we do the same shape:
 
 ```bash
 find apps variables.sh \
