@@ -1,8 +1,22 @@
 # dyff between <(yq . <(helm show values external-dns/external-dns --version v1.20.0)) <(yq eval '. * load("values.yaml")' <(helm show values external-dns/external-dns --version v1.20.0))
 # vim -O <(helm show values external-dns/external-dns --version v1.20.0) values.yaml
 
-# In larger environments with lots of records, the default of 1m can trigger rate limiting on Route 53. Uncomment this if needed.
-interval: 10m
+# Poll interval. Chart default is 1m. The upstream template's example sets
+# this to 10m to avoid Route 53 rate limits in larger environments, but we
+# only manage one zone at DigitalOcean (escapekey.org), and DO's DNS API
+# rate limits are generous (5000 req/hr per token, shared with Tofu + CCM
+# + cert-manager but easily within budget for a 1-minute external-dns poll).
+#
+# Why aggressive polling matters here: test #4 (2026-05-17) found that
+# external-dns can leave orphan TXT registry markers at DO when an Ingress
+# is recreated mid-cycle (Service deleted + recreated to swap LB type).
+# The orphan TXT persists until the next reconcile detects + cleans it.
+# At 10m interval that's a 10-minute window where the corresponding A
+# record can't be recreated. At 1m the window shrinks to one polling
+# cycle, mostly self-healing within typical operator-observation time.
+# This does NOT fix the underlying chart bug (issue #44) -- it just
+# reduces the window where it bites.
+interval: 1m
 
 # If we have a larger interval, we don't want to wait for external-dns to make changes. Uncomment this if needed.
 triggerLoopOnEvent: true
