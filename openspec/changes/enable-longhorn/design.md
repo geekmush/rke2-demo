@@ -1,27 +1,30 @@
 # Design — enable-longhorn
 
 **Tracking issue:** TBD
+**Status:** revision 2 (2026-05-17) — see proposal.md "Pre-flight findings"
 
 ## File layout (additions + edits)
 
 ```
 ansible/
-└── roles/
-    └── longhorn_disk_prep/                  # new
-        ├── defaults/main.yml
-        ├── tasks/main.yml
-        ├── handlers/main.yml
-        └── README.md
-
-ansible/playbooks/cluster.yml                # edit -- add longhorn_disk_prep before rke2_agent on workers
+├── roles/
+│   └── longhorn_disk_prep/                  # new
+│       ├── defaults/main.yml
+│       ├── tasks/main.yml
+│       └── README.md
+├── playbooks/cluster.yml                    # edit -- add longhorn_disk_prep before rke2_agent on workers
+└── scripts/render-inventory.py              # edit -- emit `longhorn_device` per-worker host_var
+                                             #         from Tofu output `worker_longhorn_devices`
 
 apps/longhorn/
-├── values.yaml                              # edit -- persistence.defaultClass: true, explicit defaultDataPath
-├── helm_secrets.yaml                        # edit -- re-encrypt with our age recipients
-├── longhorn-crypto.secrets.yaml             # edit -- re-encrypt (or delete if unused)
-└── evanstest.secrets.yaml                   # edit -- re-encrypt (or delete if unused)
+├── release.yaml                             # edit -- bump chart 1.10.0 → 1.11.2
+├── values.yaml                              # edit -- defaultClass: true, hard-isolation knobs
+├── kustomization.yaml                       # edit -- drop deleted resources, drop secretGenerator
+├── evanstest.secrets.yaml                   # DELETE (upstream-key-encrypted)
+├── longhorn-crypto.secrets.yaml             # DELETE (upstream-key-encrypted)
+└── longhorn-crypto-global.sc.yaml           # DELETE (depends on the deleted Secret)
 
-deploy.sh                                    # edit -- rke2 branch: app_list="longhorn.yaml"
+deploy.sh                                    # edit -- rke2 branch: add longhorn.yaml to app_list
 
 docs/
 ├── runbooks/longhorn-enablement.md          # new
@@ -30,27 +33,31 @@ docs/
 
 No Tofu changes — `add-do-block-storage` already shipped the substrate.
 
+No new file `apps/longhorn/helm_secrets.yaml` is created — the `secretGenerator` block in `kustomization.yaml` referencing it is removed entirely. We have no Helm-values secrets for Longhorn (no S3 backup wired up, no encryption-at-rest secrets).
+
 ## Ansible role: `longhorn_disk_prep`
 
 **Inputs:**
-- `longhorn_device` — required string, the stable device path. Populated from `tofu output -json worker_longhorn_devices | jq -r '.["<hostname>"]'` at inventory-render time (the existing `ansible/Makefile inventory` target already pulls Tofu outputs).
+- `longhorn_device` — required string, the stable device path. Populated by `render-inventory.py` from Tofu output `worker_longhorn_devices` (`render-inventory.py` edit is part of this change).
 - `longhorn_mount_path` — default `/var/lib/longhorn`.
 - `longhorn_filesystem` — default `ext4`.
 
-**Tasks (idempotent):**
+**Tasks (idempotent), in order:**
 
 1. `stat` the device path. Fail loudly with a clear message if missing — that means Phase 2 didn't run or the device path drifted.
 2. Inspect with `community.general.filesystem` module — does the device already have a filesystem? If yes and it's `ext4`, skip mkfs. If yes and it's something else, fail (operator decision: wipe is not automatic).
 3. `community.general.filesystem` `fstype=ext4 dev={{ longhorn_device }}` — creates ext4 only if no FS present (`force: false`).
 4. `ansible.posix.mount` with `state=mounted`, `path={{ longhorn_mount_path }}`, `src=UUID={{ <uuid from blkid> }}`, `fstype=ext4`, `opts=defaults,nofail`. Persists in `/etc/fstab`; `nofail` ensures a missing/unattached volume doesn't block boot.
-5. `file` to ensure `0755 root:root` on the mount point.
+5. `file` to ensure `0700 root:root` on the mount point. (Stricter than the chart's default `0755` — Longhorn runs privileged anyway and the tighter mode reduces blast radius if a manager pod is compromised.)
+6. **Apply the Longhorn opt-in label** to the node via `kubectl label node $(hostname) node.longhorn.io/create-default-disk=config --overwrite`. Done on the worker itself with the kubelet's kubeconfig (`/etc/rancher/rke2/rke2.yaml`).
+7. **Apply the Longhorn disks-config annotation** via `kubectl annotate node $(hostname) node.longhorn.io/default-disks-config='[{"path":"/var/lib/longhorn","allowScheduling":true,"storageReserved":0,"tags":["dedicated"]}]' --overwrite`. Same kubeconfig.
+
+Steps 6 + 7 only fire if rke2-agent is running and has registered the node — gated by an `until: kubectl get node $(hostname)` retry-loop.
 
 **Why UUID-based mount, not device path:**
 - DO `/dev/disk/by-id/scsi-0DO_Volume_<name>` is stable across reboots *as long as* the volume name doesn't change. Volume rename is rare but possible.
 - UUID is stable across rename and across re-import. `/etc/fstab` survives both.
 - The role still uses the by-id path for the *initial* mkfs decision (deterministic, comes from Tofu); the *mount* indirects through blkid → UUID immediately.
-
-**Handlers:** none. Mount is `state=mounted` (apply now), not `state=present` (write fstab only).
 
 **Placement in playbook:**
 
@@ -60,50 +67,63 @@ No Tofu changes — `add-do-block-storage` already shipped the substrate.
   become: true
   roles:
     - role: common
-    - role: longhorn_disk_prep        # NEW -- before rke2_agent
+    - role: longhorn_disk_prep        # NEW -- mkfs + mount BEFORE rke2_agent;
+                                       # node label + annotation AFTER (handled inside the role)
     - role: rke2_agent
 ```
 
-Workers-only. CPs get nothing.
+The role's mkfs+mount tasks (1-5) run as part of the role's `tasks/main.yml`, before `rke2_agent`. The label+annotation tasks (6-7) are conditional — they wait for `kubectl get node $(hostname)` to succeed, which only happens after `rke2_agent` has registered the node. This is intentional ordering inside a single role rather than splitting into two roles: keeps the per-worker Longhorn substrate setup in one logical unit.
 
-## Longhorn values.yaml diff (semantic)
+Workers-only. CPs receive neither the label nor the annotation, so even if their `NoSchedule` taint is ever removed, Longhorn physically cannot create a disk on them.
 
+## Hard isolation — values.yaml + node-side enforcement together
+
+Two layers of defense ensure Longhorn never touches OS disk space:
+
+### Layer 1: chart values
 ```yaml
+# apps/longhorn/values.yaml
 persistence:
-  defaultClass: true                       # was: false
-  defaultClassReplicaCount: 3              # unchanged
-  volumeBindingMode: "Immediate"           # unchanged
+  defaultClass: true                  # was: false
+  defaultClassReplicaCount: 3
+  defaultDataLocality: disabled
 
 defaultSettings:
-  defaultDataPath: "/var/lib/longhorn"     # was: ~  -- explicit for clarity
-  # createDefaultDiskLabeledNodes: ~       # unchanged; default = auto-create on every node
-  replicaSoftAntiAffinity: false           # NEW -- force replicas onto different nodes (hard anti-affinity)
+  createDefaultDiskLabeledNodes: true     # OPT-IN per node; no node gets a disk by accident
+  defaultDataPath: /var/lib/longhorn      # explicit; matches the Ansible-managed mount
+  replicaSoftAntiAffinity: false          # HARD anti-affinity → 3 replicas on 3 distinct workers
+  storageReservedPercentageForDefaultDisk: 0  # nothing else uses this disk
+  storageMinimalAvailablePercentage: 10   # dedicated → lower from default 25
+  upgradeChecker: false                   # GitOps-managed upgrades, not in-band notifier
 ```
 
-`replicaSoftAntiAffinity: false` is the hard-anti-affinity setting (counter-intuitive naming: "soft" = false means "no, don't soften it"). With 3 workers and 3 replicas, every PVC's replicas land on a unique worker — matching the success criterion.
+`createDefaultDiskLabeledNodes: true` is the critical knob. Without it, the chart's default behavior is "create a default disk on every node Longhorn sees" — which would put a disk on every worker AND every CP (if CP taints ever lift).
 
-## SOPS secret re-encryption
+### Layer 2: per-node opt-in
+The Ansible role applies the matching `node.longhorn.io/create-default-disk=config` label + `node.longhorn.io/default-disks-config` annotation on workers only. The annotation's JSON `path: /var/lib/longhorn` AND `storageReserved: 0` settings tell Longhorn "use exactly this path, don't carve out anything for non-Longhorn use."
 
-The three files arrived encrypted with the upstream template author's age recipient. Per `.sops.yaml` rules, they need to round-trip through our recipients:
+With both layers in place: a CP node (no label) → Longhorn ignores it. A worker node (label + annotation but no mount) → Longhorn would try `/var/lib/longhorn` and find it's on the OS partition. The `nofail` mount + the ordered role (mount BEFORE label) prevents that — by the time the label is applied, `/var/lib/longhorn` is the dedicated 50 GB ext4.
 
-```bash
-# For each file:
-sops -d apps/longhorn/<file> > /tmp/decrypted          # fails currently -- not our key
-# -- or, if we cannot decrypt at all (which is the case for evanstest/longhorn-crypto):
-#    delete or replace from scratch.
-sops -e --age <our-recipient> /tmp/decrypted > apps/longhorn/<file>
-shred -u /tmp/decrypted
+
+
+## apps/longhorn/ cleanup (revision 2)
+
+Revision 1 attempted to keep all three vendored secrets and re-encrypt them. Revision 2's research found:
+
+1. `evanstest.secrets.yaml` — S3 backup-target credentials for the upstream author's test environment. Encrypted with upstream's age key (we can't decrypt). Not load-bearing for our install. **DELETE.**
+2. `longhorn-crypto.secrets.yaml` — per-volume crypto key for the encrypted StorageClass. Encrypted with upstream's age key. **DELETE.**
+3. `longhorn-crypto-global.sc.yaml` — encrypted StorageClass that references the deleted Secret. Without the Secret, any PVC using this SC would hang Pending forever. **DELETE.** Re-introduce in a separate future change when there's a real encryption-at-rest requirement, designed around a key-management plan we explicitly make.
+4. `helm_secrets.yaml` — referenced by `kustomization.yaml`'s `secretGenerator` but missing from disk. We have no Helm-values secrets for Longhorn. **REMOVE the secretGenerator block** from `kustomization.yaml` entirely; do not supply an empty file.
+
+After cleanup, `apps/longhorn/` contains:
+```
+release.yaml          # HelmRelease, chart 1.11.2 (bumped from 1.10.0)
+kustomization.yaml    # resources: [release.yaml]; configMapGenerator for values; NO secretGenerator
+kustomizeconfig.yaml  # unchanged
+values.yaml           # heavily edited per "Hard isolation" above
 ```
 
-**Reality check:** `evanstest.secrets.yaml` and `longhorn-crypto.secrets.yaml` are upstream sample secrets we never had the plaintext for. They're not load-bearing for a clean install (the encrypted SC's referenced Secret can be regenerated from scratch with a fresh AES-256 key if we ever want encryption-at-rest). Three options:
-
-- **A. Delete both files** + remove from `apps/longhorn/kustomization.yaml`. Cleanest. The encrypted SC stops working until we recreate the Secret, but we're not using it as default anyway. Recommended.
-- **B. Keep the encrypted SC** (`longhorn-crypto-global.sc.yaml`) but generate a fresh secret encrypted to our recipients with a new AES-256 key. Use only if we want the encrypted SC functional from day one.
-- **C. Leave them encrypted-with-upstream-key.** They'll fail to decrypt at apply time. Rejected.
-
-**Recommendation: A.** Land the encrypted-SC story as a follow-up change if/when there's a workload that needs it.
-
-`helm_secrets.yaml` is a different story — it's the chart's Secret-sourced values overlay (per `apps/longhorn/kustomization.yaml`'s `secretGenerator`). Check whether it has any content we need; if it's empty / sample-only, replace with an empty-but-encrypted-by-us file. If it has values we need, re-encrypt or rewrite.
+`kustomize build apps/longhorn/` MUST render cleanly post-cleanup — verify before committing.
 
 ## deploy.sh edit
 

@@ -1,79 +1,129 @@
 # Tasks — enable-longhorn
 
 **Tracking issue:** TBD
+**Status:** revision 2 (2026-05-17) — see proposal.md "Pre-flight findings"
 
 Implementation order. Group 1 lands in a PR with no cluster running. Group 2 runs at the next cluster bring-up.
 
 ## Group 1 — repo work (no cluster needed)
 
-### Ansible role
+### Fix the broken vendored app
 
-- [ ] 1. Create `ansible/roles/longhorn_disk_prep/` with `defaults/main.yml`, `tasks/main.yml`, `handlers/main.yml`, `README.md`. Inputs: `longhorn_device` (required), `longhorn_mount_path` (default `/var/lib/longhorn`), `longhorn_filesystem` (default `ext4`). Per design.md "Ansible role" section.
-- [ ] 2. Wire the role into `ansible/playbooks/cluster.yml` for `hosts: workers`, placed before `rke2_agent`.
-- [ ] 3. Confirm `ansible/Makefile inventory` (or whatever renders inventory from Tofu outputs) already exposes per-worker `worker_longhorn_devices`. If not, add the mapping (`tofu output -json worker_longhorn_devices` → host_vars). Single small edit.
-- [ ] 4. `ansible-lint roles/longhorn_disk_prep playbooks/cluster.yml` clean. `yamllint` clean.
+- [ ] 1. Delete the upstream-key-encrypted files we can't decrypt:
+  ```
+  git rm apps/longhorn/evanstest.secrets.yaml
+  git rm apps/longhorn/longhorn-crypto.secrets.yaml
+  git rm apps/longhorn/longhorn-crypto-global.sc.yaml
+  ```
+- [ ] 2. Edit `apps/longhorn/kustomization.yaml`:
+  - Remove `evanstest.secrets.yaml`, `longhorn-crypto.secrets.yaml`, `longhorn-crypto-global.sc.yaml` from the `resources:` list.
+  - **Remove the entire `secretGenerator:` block** (the reason `helm_secrets.yaml` reference was broken — we have no Helm-values secrets for Longhorn).
+- [ ] 3. Edit `apps/longhorn/release.yaml`: bump chart `version: 1.10.0` → `version: 1.11.2`.
+- [ ] 4. **Acceptance gate**: `kubectl kustomize apps/longhorn/` MUST render cleanly with no missing-file or unresolved-reference errors. (This is currently broken on main; the test passes only after tasks 1+2.)
 
-### Longhorn config
+### Edit Longhorn values for hard isolation
 
 - [ ] 5. Edit `apps/longhorn/values.yaml`:
   - `persistence.defaultClass: true` (was `false`).
-  - `defaultSettings.defaultDataPath: "/var/lib/longhorn"` (explicit; chart default but written for clarity).
-  - `defaultSettings.replicaSoftAntiAffinity: false` (force replicas onto unique nodes; counter-intuitive name, see design.md).
-- [ ] 6. Resolve the upstream-encrypted secrets per design.md "SOPS secret re-encryption" Recommendation A:
-  - Delete `apps/longhorn/evanstest.secrets.yaml` and `apps/longhorn/longhorn-crypto.secrets.yaml`.
-  - Remove both from `apps/longhorn/kustomization.yaml`'s `resources:` list.
-  - Inspect `apps/longhorn/helm_secrets.yaml`. If empty/sample-only, replace with an empty-but-our-key-encrypted file. If it has real values we need, re-encrypt with our recipients.
-- [ ] 7. Leave `apps/longhorn/longhorn-crypto-global.sc.yaml` in place (still defined, still in the kustomization), but expect it to be non-functional until a future change creates the per-PVC encryption Secret. Note this in the new runbook.
-- [ ] 8. `kustomize build apps/longhorn/` cleanly renders (no missing references).
+  - `defaultSettings.createDefaultDiskLabeledNodes: true` — opt-in per node; no node gets a disk without an explicit label.
+  - `defaultSettings.defaultDataPath: "/var/lib/longhorn"` — explicit; matches the Ansible-managed mount.
+  - `defaultSettings.replicaSoftAntiAffinity: false` — hard anti-affinity; force replicas onto unique nodes.
+  - `defaultSettings.storageReservedPercentageForDefaultDisk: 0` — dedicated volume, no need to reserve.
+  - `defaultSettings.storageMinimalAvailablePercentage: 10` — lower from default 25 since the disk is dedicated.
+  - `defaultSettings.upgradeChecker: false` — Flux + chart pin manages upgrades, not in-band notifier.
+  - Keep the existing `persistence.defaultClassReplicaCount: 3`.
+- [ ] 6. **Acceptance gate**: `kubectl kustomize apps/longhorn/` still renders cleanly with the new values.
+
+### Ansible: render the disk-path inventory + new role
+
+- [ ] 7. Edit `ansible/scripts/render-inventory.py` to emit per-worker `longhorn_device` host_var from Tofu output `worker_longhorn_devices`. The Tofu output is a map of worker hostname → `/dev/disk/by-id/scsi-0DO_Volume_<name>`; render it into each worker's host block as `longhorn_device: <path>`. No new inventory groups; just a per-host var.
+- [ ] 8. Run `make -C ansible inventory` (no cluster needed; Tofu state already has the output if the substrate was ever applied) and verify the generated `inventory/generated.yaml` shows `longhorn_device:` lines for each worker.
+- [ ] 9. Create `ansible/roles/longhorn_disk_prep/` with:
+  - `defaults/main.yml`: `longhorn_mount_path: /var/lib/longhorn`, `longhorn_filesystem: ext4`. `longhorn_device` has no default — required per-host from inventory.
+  - `tasks/main.yml` with 7 ordered tasks per design.md "Ansible role" section:
+    1. stat the device, fail if missing
+    2. inspect existing filesystem (if any)
+    3. mkfs.ext4 if needed (no force)
+    4. mount via UUID at `/var/lib/longhorn` with `nofail`
+    5. chmod 0700 on the mount point
+    6. (gated on rke2-agent registered) label the node `node.longhorn.io/create-default-disk=config`
+    7. (gated on same) annotate the node `node.longhorn.io/default-disks-config='[{"path":"/var/lib/longhorn","allowScheduling":true,"storageReserved":0,"tags":["dedicated"]}]'`
+  - `README.md`: inputs, ordering, idempotency notes, the "why UUID-mount" reasoning.
+- [ ] 10. Edit `ansible/playbooks/cluster.yml` (or wherever workers' role order is defined) to add `longhorn_disk_prep` **before** `rke2_agent` for the workers host group.
+- [ ] 11. `ansible-playbook --syntax-check -i inventory/generated.yaml playbooks/site.yml` clean. `ansible-lint roles/longhorn_disk_prep` clean. `yamllint roles/longhorn_disk_prep` clean.
 
 ### deploy.sh
 
-- [ ] 9. Edit the `rke2)` branch (`deploy.sh:162-173`):
-  - Replace `app_list=""` with `app_list="longhorn.yaml"`.
-  - Delete the TEMPORARY comment block entirely.
+- [ ] 12. Edit the `rke2)` branch in `deploy.sh`: change `app_list="digitalocean-cloud-controller-manager.yaml"` to `app_list="digitalocean-cloud-controller-manager.yaml longhorn.yaml"`. (Order matters for log readability, not for reconcile — they're parallel.) Remove any TEMPORARY-Phase-3b comment fossils.
 
 ### Docs
 
-- [ ] 10. Write `docs/runbooks/longhorn-enablement.md`:
-  - Prereqs (Phase 2 substrate up, Phase 3b platform reconciled).
-  - Enable: `make play` (idempotent re-run picks up the new role), `./deploy.sh` (with restored app_list).
-  - Verify: success-criteria checklist from proposal.md (PVC bind, replica spread, pod-reschedule data survival, mount on the DO volume, idempotent ansible).
-  - Rollback: `kubectl -n longhorn-system delete helmrelease longhorn`, remove `longhorn.yaml` from the rke2 case, `umount /var/lib/longhorn` + comment the fstab line. Volume data survives as ext4 on the device.
-  - Encrypted-SC note: the `longhorn-crypto-global` StorageClass is defined but non-functional pending a future change to provision its referenced Secret.
-- [ ] 11. Write `docs/diagrams/longhorn-topology.md` per the design.md outline. Cross-link from the new runbook and from `do-network.md` (sibling diagram).
-- [ ] 12. Update `docs/runbooks/do-bring-up.md` Phase 2 storage section: replace "pointer to Phase 3 for actual Longhorn install" with a link to the new `longhorn-enablement.md`.
-- [ ] 13. Update `README.md` Phase 3 row to reflect Longhorn-included status once this lands (today the phase-3 row implies Longhorn is part of Phase 3 — accurate after enablement).
+- [ ] 13. Write `docs/runbooks/longhorn-enablement.md`:
+  - Prereqs: Phase 2 substrate up (3× 50GB DO Block Storage volumes attached), Phase 3b platform reconciled (Flux + cert-manager + external-dns + ingress-nginx), Phase 3d CCM running.
+  - Enable: `make -C ansible play` (idempotent re-run picks up `longhorn_disk_prep`), `./deploy.sh` (with `longhorn.yaml` in `app_list`).
+  - Verify (success-criteria from proposal.md, including the hard-isolation checks).
+  - Rollback: `kubectl -n longhorn-system delete helmrelease longhorn` + remove `longhorn.yaml` from deploy.sh app_list + unmount + comment fstab. Volume data survives as ext4 on the device.
+  - **Operational caveat — encrypted SC removed in this change**. Future encryption-at-rest needs a separate proposal with explicit key-management.
+- [ ] 14. Write `docs/diagrams/longhorn-topology.md` per design.md outline. Cross-link from new runbook and from `do-network.md` + `public-traffic-path.md`.
+- [ ] 15. Update `docs/runbooks/do-bring-up.md` "Phase 2 storage" section: change pointer from "Phase 3 will install Longhorn" to "Phase 3c installs Longhorn — see longhorn-enablement.md."
+- [ ] 16. Update `README.md` Phase-3 row (if it implies Longhorn isn't yet present): mark Longhorn as installed.
+- [ ] 17. Update `docs/TROUBLESHOOTING.md` with a Longhorn section (currently doesn't have one). Cover at minimum: replica scheduling stuck, PVC stays Pending, Longhorn manager pods Pending (toleration/taint), disk path on wrong volume (the hard-isolation check failing).
 
-### Close-out group 1
+### Close-out Group 1
 
-- [ ] 14. Open issue: `Phase 3c — enable Longhorn`. Labels: `phase-3`, `area:storage`, `area:fluxcd`, `priority:normal`. Body: link to this change directory.
-- [ ] 15. Open PR with commits grouped by concern (suggest three):
-  - `feat(ansible): add longhorn_disk_prep role + wire into cluster.yml`
-  - `feat(longhorn): default StorageClass + replica anti-affinity + cleanup vendored secrets`
-  - `docs: longhorn enablement runbook + topology diagram`
-- [ ] 16. Secrets safe-staging check before push: no plaintext age key, no plaintext Longhorn secret, no kubeconfig.
-- [ ] 17. Merge to `main`. Issue stays open until Group 2 validation completes.
+- [ ] 18. Verify secrets safe-staging before push: no plaintext age key, no `.decrypted` files staged, no kubeconfig in the diff.
+- [ ] 19. Open issue: `Phase 3c — enable Longhorn`. Labels: `type:task`, `phase-3`, `area:longhorn`, `area:fluxcd`, `area:ansible`, `priority:normal`. Body: link to this proposal directory.
+- [ ] 20. Open PR with commits grouped:
+  - `fix(longhorn): delete upstream-key-encrypted vendored files + bump chart 1.10.0 -> 1.11.2`
+  - `feat(longhorn): hard-isolation values (createDefaultDiskLabeledNodes=true + workers-only opt-in)`
+  - `feat(ansible): longhorn_disk_prep role + render-inventory `longhorn_device` per-worker`
+  - `docs: longhorn-enablement runbook + topology diagram + TROUBLESHOOTING section`
+- [ ] 21. PR description includes the kustomize-build-was-broken-on-main finding (the missing `helm_secrets.yaml`), so reviewers understand why deleting files is part of "enabling" Longhorn rather than "breaking" it.
+- [ ] 22. Merge to `main`. Issue stays open until Group 2 validation completes.
 
 ## Group 2 — at-bring-up validation (cluster running)
 
-> **Pre-flight:** [#24](https://github.com/geekmush/do-nyc3-rke2-demo/issues/24) (`deploy.sh` second-cluster bring-up) and [#23](https://github.com/geekmush/do-nyc3-rke2-demo/issues/23) (sed-clobber of archive docs) both bite on Group 2 if unfixed. Resolve both before running, or follow the manual recovery captured in the 2026-05-16 unattended-test summary (re-apply `flux/flux-system/` via `kubectl apply -k`, then `flux bootstrap github`, then re-add the SOPS decryption block to `gotk-sync.yaml`).
+Pre-flight: all install-do-ccm-era fixes are landed on main as of 2026-05-17. No outstanding blockers.
 
-- [ ] 18. `cd terraform/environments/do-test && make apply`. Confirm 6 droplets + 3 volumes + 1 internal LB. No drift.
-- [ ] 19. `cd ansible && make inventory && make play`. Confirm `longhorn_disk_prep` runs successfully on all 3 workers (`changed` on first pass, `changed=0` on rerun).
-- [ ] 20. SSH into each worker. Verify:
-  - `lsblk` shows the DO volume mounted at `/var/lib/longhorn`.
-  - `df -h /var/lib/longhorn` shows ~50 GB ext4.
-  - `/etc/fstab` has a `UUID=...` line for the mount with `nofail`.
-  - Root volume usage is unchanged from Phase 3b.
-- [ ] 21. `cd .. && ./deploy.sh`. Confirm `longhorn.yaml` reconciles successfully via Flux. `flux get helmrelease -n longhorn-system longhorn` → `READY=True` within 5 min.
-- [ ] 22. `kubectl get sc`. Expect `longhorn (default)` and `longhorn-crypto-global` (non-default).
-- [ ] 23. Apply a test PVC + busybox pod (manifest snippet in the runbook). Verify:
+- [ ] 23. `cd terraform/environments/do-test && make apply` — same 16 resources as test-#8 envelope.
+- [ ] 24. `cd ansible && make inventory && make play` — confirm:
+  - `failed=0 unreachable=0` for all 6 hosts.
+  - `longhorn_disk_prep` role runs successfully on all 3 workers (`changed` on first pass, `changed=0` on rerun).
+  - SSH into one worker: `lsblk -f` shows the DO volume mounted at `/var/lib/longhorn` with UUID-based fstab line + `nofail` option.
+- [ ] 25. `cd .. && ./deploy.sh` — fully unattended (per test-#7/#8 baselines). `flux get all -A` shows everything Ready including `longhorn` HelmRelease + Kustomization.
+- [ ] 26. **CCM-untaint wait**: Longhorn DaemonSet pods may sit Pending briefly while CCM untaints nodes. Should clear within ~60s. `kubectl -n longhorn-system get pods -o wide` shows everything Running.
+- [ ] 27. **Hard-isolation acceptance gates** (NEW in revision 2):
+  ```bash
+  # Only one disk path across all Longhorn nodes, and it's /var/lib/longhorn:
+  kubectl -n longhorn-system get nodes.longhorn.io -o json \
+    | jq -r '.items[].spec.disks | to_entries[] | .value.path' | sort -u
+  # Expect EXACTLY: /var/lib/longhorn   (no other lines)
+
+  # Only 3 Longhorn Node CRs (workers, NOT CPs):
+  kubectl -n longhorn-system get nodes.longhorn.io
+  # Expect 3 rows.
+
+  # Disk capacity reflects the 50GB volume, not the 80GB droplet OS disk:
+  kubectl -n longhorn-system get nodes.longhorn.io -o json \
+    | jq -r '.items[] | "\(.metadata.name): \(.status.diskStatus[].storageMaximum / 1073741824 | floor) GiB"'
+  # Expect ~50 GiB per worker.
+
+  # On a worker, confirm the mount lineage:
+  ssh worker-N 'findmnt /var/lib/longhorn; lsblk -f'
+  # Expect: mounted from /dev/sda or /dev/sdb (DO volume), NOT /dev/vda (OS).
+  ```
+  If any of these fail, **stop and debug** — the proposal's isolation guarantee isn't holding.
+- [ ] 28. `kubectl get sc` shows `longhorn (default)` and nothing else Longhorn-related. (No `longhorn-crypto-global` — we deleted it.)
+- [ ] 29. End-to-end PVC test (snippet in runbook): apply a 1Gi PVC with no `storageClassName` annotation. Verify:
   - PVC binds within 30s.
-  - `kubectl -n longhorn-system get volumes.longhorn.io -o wide` shows 3 replicas, one per worker.
-  - Pod writes a file, then force-delete the pod with `kubectl delete pod --grace-period=0 --force`. Reschedule lands it on a different worker; the file is still readable.
-- [ ] 24. Tear down the test PVC + pod. Confirm Longhorn reaps the volume (`kubectl -n longhorn-system get volumes.longhorn.io` empty).
-- [ ] 25. Close tracking issue. Comment links to the PR(s) and to verification command outputs.
+  - `kubectl -n longhorn-system get volumes.longhorn.io` shows the volume.
+  - `kubectl -n longhorn-system get replicas.longhorn.io -l longhornvolume=<vol>` shows 3 replicas, distinct `.spec.nodeID` (hard anti-affinity working).
+  - A test pod writes a file, gets force-deleted, reschedules to a different worker, reads the file back.
+- [ ] 30. Tear-down test: delete the test PVC + pod. `kubectl -n longhorn-system get volumes.longhorn.io` becomes empty within ~30s.
+- [ ] 31. `make -C ansible play` again — `changed=0` proves idempotency end-to-end.
+- [ ] 32. `make -C terraform destroy` — `Resources: 16 destroyed`, exit 0, VPC retained (per #29).
+- [ ] 33. Close tracking issue. Comment with verification command outputs.
 
 ## Archive
 
-- [ ] 26. `git mv openspec/changes/enable-longhorn openspec/changes/archive/<YYYY-MM-DD>-enable-longhorn`. Commit `docs(openspec): archive enable-longhorn`.
+- [ ] 34. `git mv openspec/changes/enable-longhorn openspec/changes/archive/<YYYY-MM-DD>-enable-longhorn`. Commit `docs(openspec): archive enable-longhorn`.
