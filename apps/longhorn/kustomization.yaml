@@ -1,5 +1,18 @@
 # https://fluxcd.io/flux/guides/helmreleases/#refer-to-values-in-configmaps-generated-with-kustomize
-# https://fluxcd.io/flux/guides/helmreleases/#refer-to-values-in-secret-generated-with-kustomize-and-sops
+#
+# Revision 2 cleanup (enable-longhorn proposal v2):
+# - Dropped `evanstest.secrets.yaml` (upstream's S3 backup creds) and
+#   `longhorn-crypto.secrets.yaml` (upstream's per-volume crypto key);
+#   both were SOPS-encrypted with the upstream template author's age key,
+#   unreadable to us. The vendored files have been deleted from disk.
+# - Dropped `longhorn-crypto-global.sc.yaml` -- the encrypted StorageClass
+#   depended on the deleted `longhorn-crypto` Secret and would have left
+#   any PVC using it stuck Pending. Reintroduce in a separate future
+#   change when encryption-at-rest becomes a real requirement.
+# - Dropped the `secretGenerator:` block entirely -- the vendored template
+#   referenced a `helm_secrets.yaml` that didn't exist on disk, which made
+#   `kustomize build` fail. We have no Helm-values secrets for Longhorn at
+#   this phase; no replacement file is needed.
 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -8,17 +21,10 @@ kind: Kustomization
 namespace: longhorn-system
 
 resources:
-  - evanstest.secrets.yaml
-  - longhorn-crypto.secrets.yaml
   - release.yaml
-  - longhorn-crypto-global.sc.yaml
 configMapGenerator:
   - name: longhorn-values
     files:
       - values.yaml=values.yaml
-secretGenerator:
-  - name: longhorn-secrets
-    files:
-      - values.yaml=helm_secrets.yaml
 configurations:
   - kustomizeconfig.yaml

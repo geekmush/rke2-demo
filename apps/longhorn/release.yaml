@@ -25,7 +25,11 @@ spec:
   chart:
     spec:
       chart: longhorn
-      version: 1.10.0
+      # 1.11.2 is the latest stable as of 2026-05-17. v1.12 is RC-only.
+      # v1.11 GA'd parallel replica rebuild + other improvements over 1.10.
+      # See enable-longhorn proposal v2 "Pre-flight findings" #3 for the
+      # version-bump rationale.
+      version: 1.11.2
       sourceRef:
         kind: HelmRepository
         name: longhorn
@@ -33,5 +37,7 @@ spec:
   valuesFrom:
     - kind: ConfigMap
       name: longhorn-values
-    - kind: Secret
-      name: longhorn-secrets
+  # Note: no `Secret longhorn-secrets` valuesFrom -- the vendored template's
+  # secretGenerator pointing at a missing helm_secrets.yaml was dropped in
+  # apps/longhorn/kustomization.yaml during the enable-longhorn cleanup.
+  # No Helm-values secrets at this phase.
