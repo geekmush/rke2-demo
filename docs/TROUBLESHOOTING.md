@@ -54,7 +54,7 @@ Where each stage *should* succeed:
 | kube-tunnel.sh won't connect | [Tunnel](#tunnel) |
 | `./deploy.sh` exits non-zero or partial | [deploy.sh](#deploysh) |
 | `./deploy.sh` script-level commits/pushes go to wrong branch | [Branch mismatch](#deploysh-branch-mismatch) |
-| Project1-dev sed clobbers archived docs | [Project1-dev clobber](#project1-dev-clobber) |
+| Project1-dev sed clobbers archived docs | [Project1-dev clobber](#do-nyc3-rke2-demo-clobber) |
 | sops-age secret "unknown identity type" cascading errors | [sops-age race](#sops-age-race) |
 | `flux bootstrap` health-check timeout | [Flux bootstrap timeout](#flux-bootstrap-timeout) |
 | Flux controller pods Pending forever | [Flux pods Pending](#flux-pods-pending) |
@@ -200,11 +200,11 @@ can't see them.
 
 ### Project1-dev clobber
 
-**Symptom**: After running `./deploy.sh`, archived OpenSpec docs that mention `project1-dev` (the upstream template's placeholder) got sed-replaced with the actual cluster name, corrupting historical records.
+**Symptom**: After running `./deploy.sh`, archived OpenSpec docs that mention `do-nyc3-rke2-demo` (the upstream template's placeholder) got sed-replaced with the actual cluster name, corrupting historical records.
 
 **Root cause**: deploy.sh's sed-replace loop wasn't excluding archived docs.
 
-**Fix landed**: PR #27. The `grep -rIl project1-dev` now passes `--exclude-dir=archive --exclude-dir=openspec`. Inline comments document each exclusion.
+**Fix landed**: PR #27. The `grep -rIl do-nyc3-rke2-demo` now passes `--exclude-dir=archive --exclude-dir=openspec`. Inline comments document each exclusion.
 
 **Portability**: Generic — applies to any rename template's sed loop. Phase-5 PR candidate for `devopscoop/fluxcd-template`.
 
@@ -827,7 +827,7 @@ watch -n 5 '
 | Ansible | #46 | #42 | coredns HelmChartConfig (toleration for uninitialized taint) |
 | Ansible | n/a | n/a | (PR #19 baseline) Canal Flannel interface binding to eth1 |
 | Flux | #39 | #36 | All six Flux controllers tolerate uninitialized taint |
-| deploy.sh | #27 | #23 | `--exclude-dir=archive --exclude-dir=openspec` in project1-dev sed |
+| deploy.sh | #27 | #23 | `--exclude-dir=archive --exclude-dir=openspec` in do-nyc3-rke2-demo sed |
 | deploy.sh | #28 | #24 | Cluster-state-aware bootstrap; reorder sops-age vs decryption-block |
 | deploy.sh | #33 | #32 | Branch-mismatch guard at script start |
 | deploy.sh | #40 | #37 | Suspend/resume around sops-age + decryption-block window |
