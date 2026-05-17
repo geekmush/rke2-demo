@@ -72,14 +72,33 @@ rke2_canal_flannel_iface: eth1
 # install-do-ccm adds `cloud-provider=external` so the DigitalOcean
 # Cloud Controller Manager can untaint nodes (kubelet adds the
 # `node.cloudprovider.kubernetes.io/uninitialized` taint at startup
-# when this flag is set; CCM removes it after initializing each node)
-# and so LoadBalancer Services get real DO LB IPs.
+# when this flag is set AND when no internal cloud-provider is
+# initializing the node first; CCM removes it after initializing).
 #
-# Without `cloud-provider=external`, CCM still runs but cannot complete
-# node initialization (no providerID, no zone labels) and LB
-# provisioning behavior is undefined per the upstream CCM docs.
+# This kubelet flag pairs with `rke2_cloud_provider_name: external`
+# below -- both are required. See openspec/changes/install-do-ccm/.
 #
 # Phase 4 bare-metal removes CCM and reverts this to `[]` (or whatever
 # the bare-metal load-balancer integration needs).
 rke2_kubelet_args:
   - "cloud-provider=external"
+
+# RKE2-level cloud-provider setting, rendered into config.yaml as
+# `cloud-provider-name: <value>`. Empty disables the line entirely.
+#
+# `external` tells RKE2 NOT to set its own providerID at node-join,
+# leaving the field empty for DO CCM to populate with
+# digitalocean://<droplet-id>. Without this (the v2 install-do-ccm
+# mistake), RKE2 sets providerID=rke2://<name> -- which is immutable
+# in Kubernetes once set -- and DO CCM rejects every node with
+# `provider ID "rke2://..." is missing prefix "digitalocean://"`.
+# Service-LB provisioning then never happens. Confirmed empirically
+# during the 2026-05-17 unattended test of feat/install-do-ccm.
+#
+# WARNING: providerID is immutable, so changing this knob's value
+# requires a full `make destroy` + fresh bring-up for it to take effect
+# on a cluster that has already joined nodes. Per-node delete + rejoin
+# is theoretically possible but risks etcd quorum loss on the CPs.
+#
+# Phase 4 bare-metal sets this to "" so RKE2 stays in charge.
+rke2_cloud_provider_name: "external"
