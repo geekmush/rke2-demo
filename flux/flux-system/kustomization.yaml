@@ -15,5 +15,6 @@ resources:
   - ingress-nginx.yaml
   - sops-age.secrets.yaml
   - digitalocean-cloud-controller-manager.yaml
+  - longhorn.yaml
 patchesStrategicMerge:
   - flux-resources-patch.yaml
