@@ -14,5 +14,6 @@ resources:
   - imageupdateautomation.yaml
   - ingress-nginx.yaml
   - sops-age.secrets.yaml
+  - digitalocean-cloud-controller-manager.yaml
 patchesStrategicMerge:
   - flux-resources-patch.yaml
