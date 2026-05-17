@@ -74,6 +74,45 @@ if [[ "$(yq --version | awk '{ print $4 }')" != "v${yq_version}" ]] ; then
   cd -
 fi
 
+# Branch-safety check. Refuse to continue if the local git branch doesn't
+# match the branch Flux's flux-system GitRepository tracks. Otherwise this
+# script's self-correcting commits (the project1-dev sed-rename below,
+# *.decrypted re-encryption, gotk-sync.yaml decryption-block recovery,
+# app_list updates) get pushed to the wrong branch and Flux never sees them.
+#
+# Bites hard on feature-branch test runs: bootstrap pushes to the tracked
+# branch (default main), local recovery commits push to the feature branch,
+# Flux watches main, child Kustomizations fail to decrypt SOPS secrets. See
+# issue #32 for the original failure case (2026-05-17 unattended test of
+# feat/install-do-ccm). When in doubt, merge your feature branch to the
+# tracked branch first OR check it out locally before running deploy.sh.
+#
+# Skipped on the very first bootstrap (gotk-sync.yaml is a single-line
+# placeholder shipped by the upstream template; bootstrap will overwrite it).
+if [[ -s flux/flux-system/gotk-sync.yaml && "$(cat flux/flux-system/gotk-sync.yaml | wc -l)" -gt 1 ]]; then
+  flux_branch=$(yq 'select(.kind == "GitRepository") | .spec.ref.branch' flux/flux-system/gotk-sync.yaml 2>/dev/null)
+  [[ "${flux_branch}" == "null" ]] && flux_branch=""
+  current_branch=$(git branch --show-current)
+  if [[ -n "${flux_branch}" && "${current_branch}" != "${flux_branch}" ]]; then
+    cat >&2 <<EOM
+ERROR: deploy.sh is running on git branch '${current_branch:-<DETACHED HEAD>}',
+but Flux's flux-system GitRepository tracks branch '${flux_branch}'. The
+self-correcting commits this script makes would land on
+'${current_branch:-<DETACHED HEAD>}' -- where Flux can't see them -- and the
+cluster will end up missing the SOPS decryption block, broken app_list
+entries, or unencrypted scratch secrets in git.
+
+To validate a feature branch end-to-end, merge it to '${flux_branch}' first
+(the PR can stay open) OR check out '${flux_branch}' locally before re-running.
+
+Pass DEPLOY_ALLOW_BRANCH_MISMATCH=1 to suppress this check -- you are
+responsible for the consequences.
+EOM
+    [[ "${DEPLOY_ALLOW_BRANCH_MISMATCH:-}" == "1" ]] || exit 1
+    echo "WARNING: DEPLOY_ALLOW_BRANCH_MISMATCH=1 -- continuing anyway." >&2
+  fi
+fi
+
 # Replace project1-dev with cluster_name in all files except this script.
 # Have to use -i.bak because Mac sed is garbage.
 #
