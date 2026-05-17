@@ -323,11 +323,15 @@ case "$k8s_platform" in
     #   so RKE2 doesn't set its own providerID first -- see
     #   openspec/changes/install-do-ccm/ proposal v3 for the full why.
     #
-    # longhorn: distributed block storage. Not yet enabled at this
-    #   commit -- restored as part of openspec/changes/enable-longhorn
-    #   once that lands (its Group-1 PR is the appropriate place to add
-    #   "longhorn.yaml" to this list).
-    app_list="digitalocean-cloud-controller-manager.yaml"
+    # longhorn: Longhorn distributed block storage. Uses the dedicated
+    #   50 GiB DO Block Storage volume per worker (attached via Tofu
+    #   `add-do-block-storage`, mkfs'd + mounted by the Ansible role
+    #   `longhorn_disk_prep`). Hard-isolated: `createDefaultDiskLabeledNodes:
+    #   true` in apps/longhorn/values.yaml means Longhorn only places a
+    #   disk on nodes the Ansible role explicitly labeled -- workers
+    #   only, never CPs, never anywhere outside /var/lib/longhorn. See
+    #   openspec/changes/enable-longhorn/ proposal v2.
+    app_list="digitalocean-cloud-controller-manager.yaml longhorn.yaml"
     ;;
   *)
     echo "ERROR: k8s_platform invalid" >&2
