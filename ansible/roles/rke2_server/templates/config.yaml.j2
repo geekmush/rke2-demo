@@ -38,6 +38,14 @@ kubelet-arg:
 {% endfor %}
 {% endif %}
 
+{# Cloud-provider integration. Empty value disables this line entirely.    #}
+{# install-do-ccm sets this to "external" so RKE2 stops setting its own   #}
+{# providerID at node-join -- otherwise the immutable rke2://<name> value #}
+{# blocks DO CCM from populating digitalocean://<id>.                      #}
+{% if rke2_cloud_provider_name %}
+cloud-provider-name: "{{ rke2_cloud_provider_name }}"
+{% endif %}
+
 {# Bootstrap vs join: only the first CP in inventory inits a cluster, and  #}
 {# only when the LB-probe at play-start showed no existing supervisor.     #}
 {% if rke2_should_init | bool and inventory_hostname == groups['rke2_servers'][0] %}

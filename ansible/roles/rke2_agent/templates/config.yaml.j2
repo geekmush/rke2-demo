@@ -12,3 +12,11 @@ kubelet-arg:
   - "{{ arg }}"
 {% endfor %}
 {% endif %}
+
+{# Cloud-provider integration. Empty value disables this line entirely.    #}
+{# install-do-ccm sets this to "external" so RKE2 stops setting its own   #}
+{# providerID at node-join -- otherwise the immutable rke2://<name> value #}
+{# blocks DO CCM from populating digitalocean://<id>.                      #}
+{% if rke2_cloud_provider_name %}
+cloud-provider-name: "{{ rke2_cloud_provider_name }}"
+{% endif %}
