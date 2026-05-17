@@ -1,0 +1,18 @@
+---
+# Mount path inside the host. Matches Longhorn's chart default
+# `defaultSettings.defaultDataPath` so the chart's view and the host's
+# mount-point view of the disk align without further override.
+longhorn_mount_path: /var/lib/longhorn
+
+# Filesystem to format the dedicated Longhorn device with, if it has no
+# existing filesystem. ext4 picked over xfs because shrink/grow semantics
+# are simpler and our 50 GiB volumes are well within ext4's sweet spot.
+# If the device already has a filesystem of a different type, the role
+# fails loudly rather than wiping (operator decision required).
+longhorn_filesystem: ext4
+
+# Note: `longhorn_device` has NO default here -- it MUST come from
+# per-host inventory data (emitted by ansible/scripts/render-inventory.py
+# from Tofu output `worker_longhorn_devices`). Hardcoding a default like
+# `/dev/sda` would be a footgun; we want the role to fail-fast if the
+# inventory wasn't built with Longhorn substrate awareness.

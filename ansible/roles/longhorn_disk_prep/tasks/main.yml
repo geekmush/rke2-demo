@@ -1,0 +1,132 @@
+---
+# longhorn_disk_prep -- mkfs + mount + label/annotate a dedicated raw
+# device for Longhorn consumption. See ../README.md for full design.
+
+- name: assert longhorn_device host_var is set
+  ansible.builtin.assert:
+    that:
+      - longhorn_device is defined
+      - longhorn_device | length > 0
+    fail_msg: >-
+      longhorn_device host_var not set on {{ inventory_hostname }}. Did
+      `make inventory` run against a Tofu state that includes the
+      worker_longhorn_devices output? Check
+      `terraform/environments/do-test/outputs.tf` and
+      `ansible/scripts/render-inventory.py`.
+
+- name: stat the dedicated Longhorn device
+  ansible.builtin.stat:
+    path: "{{ longhorn_device }}"
+  register: longhorn_disk_prep_device_stat
+
+- name: fail if dedicated Longhorn device is missing
+  ansible.builtin.fail:
+    msg: >-
+      Dedicated Longhorn device {{ longhorn_device }} does not exist on
+      {{ inventory_hostname }}. Either the DO Block Storage volume was
+      not attached, or its name changed. Check Tofu state +
+      `worker_longhorn_devices` output.
+  when: not longhorn_disk_prep_device_stat.stat.exists
+
+- name: inspect existing filesystem on the dedicated device
+  # `blkid -s TYPE -o value <dev>` prints the FS type (e.g. ext4) or
+  # nothing if the device is raw. Exit code 2 = no FS, which we treat
+  # as "blank disk, OK to mkfs."
+  ansible.builtin.command:
+    cmd: "blkid -s TYPE -o value {{ longhorn_device }}"
+  register: longhorn_disk_prep_blkid
+  changed_when: false
+  failed_when: longhorn_disk_prep_blkid.rc not in [0, 2]
+
+- name: refuse to wipe a non-matching filesystem
+  ansible.builtin.fail:
+    msg: >-
+      {{ longhorn_device }} on {{ inventory_hostname }} has an existing
+      filesystem of type "{{ longhorn_disk_prep_blkid.stdout }}", not
+      "{{ longhorn_filesystem }}". Refusing to wipe automatically.
+      Operator must decide: either `wipefs -a {{ longhorn_device }}` if
+      the data is disposable, or update longhorn_filesystem to match.
+  when:
+    - longhorn_disk_prep_blkid.stdout | length > 0
+    - longhorn_disk_prep_blkid.stdout != longhorn_filesystem
+
+- name: create filesystem on the dedicated device
+  community.general.filesystem:
+    fstype: "{{ longhorn_filesystem }}"
+    dev: "{{ longhorn_device }}"
+    force: false   # never wipe; relies on previous tasks to gate
+  when: longhorn_disk_prep_blkid.stdout | length == 0
+
+- name: read post-mkfs UUID from the dedicated device
+  ansible.builtin.command:
+    cmd: "blkid -s UUID -o value {{ longhorn_device }}"
+  register: longhorn_disk_prep_uuid
+  changed_when: false
+
+- name: ensure mount point exists
+  ansible.builtin.file:
+    path: "{{ longhorn_mount_path }}"
+    state: directory
+    owner: root
+    group: root
+    # 0700: Longhorn pods run privileged anyway, and we want any
+    # accidentally-deployed non-Longhorn pod to lack permission to
+    # read or write here. Defense in depth alongside the chart-level
+    # createDefaultDiskLabeledNodes setting.
+    mode: '0700'
+
+- name: mount dedicated device by UUID and persist in fstab
+  ansible.posix.mount:
+    src: "UUID={{ longhorn_disk_prep_uuid.stdout }}"
+    path: "{{ longhorn_mount_path }}"
+    fstype: "{{ longhorn_filesystem }}"
+    # nofail: a missing volume produces a degraded but bootable worker
+    #         (rather than blocking boot entirely). Longhorn's
+    #         cluster-level redundancy handles a missing-disk worker.
+    # noatime: storage workload doesn't benefit from atime writes.
+    opts: defaults,nofail,noatime
+    state: mounted
+
+# --- Tasks below talk to the kube API. They gate themselves on
+# rke2-agent having registered the node, so they're safe to run as part
+# of the same role invocation -- even though they conceptually belong
+# "after rke2_agent." Keeping them inside this role keeps the per-worker
+# Longhorn substrate setup as one logical unit.
+
+- name: wait for this worker to be registered as a Node by rke2-agent
+  ansible.builtin.command:
+    cmd: "/var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get node {{ inventory_hostname }} -o name"
+  register: longhorn_disk_prep_node_probe
+  retries: 30
+  delay: 5
+  until: longhorn_disk_prep_node_probe.rc == 0
+  changed_when: false
+  # rke2-agent's kubeconfig lives at /etc/rancher/rke2/rke2.yaml on the
+  # agent host AFTER rke2-agent has fully started. The wait + retry is
+  # how we phase this task without splitting the role.
+
+- name: label this worker for Longhorn default-disk opt-in
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml
+      label node {{ inventory_hostname }}
+      node.longhorn.io/create-default-disk=config --overwrite
+  register: longhorn_disk_prep_label
+  changed_when: "'not labeled' not in longhorn_disk_prep_label.stderr"
+
+- name: annotate this worker with Longhorn default-disks-config
+  # The JSON in the annotation value is what Longhorn parses as the
+  # per-node disk spec. Pinning path / allowScheduling / storageReserved
+  # / tags belt-and-suspenders alongside the chart's defaultSettings
+  # (which apply to disks NOT spec'd here).
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml
+      annotate node {{ inventory_hostname }}
+      node.longhorn.io/default-disks-config={{ longhorn_disk_prep_disks_config_json | quote }}
+      --overwrite
+  vars:
+    longhorn_disk_prep_disks_config_json: >-
+      [{"path":"{{ longhorn_mount_path }}","allowScheduling":true,"storageReserved":0,"tags":["dedicated"]}]
+  register: longhorn_disk_prep_annotate
+  changed_when: "'not annotated' not in longhorn_disk_prep_annotate.stderr"
