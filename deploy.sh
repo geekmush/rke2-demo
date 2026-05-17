@@ -124,11 +124,16 @@ fi
 #   project1-dev as a literal string when documenting the convention or
 #   describing prior renames. Project-specific to this repo (OpenSpec is
 #   not part of the upstream template), so this exclusion stays local.
+# --exclude TROUBLESHOOTING.md: docs/TROUBLESHOOTING.md has a section
+#   documenting THIS sed-rename behavior, including the literal string
+#   project1-dev as upstream-template terminology. Sed-replacing it
+#   corrupts the very explanation operators read to understand the
+#   bug. See the "Project1-dev clobber" section there.
 while read -r f; do
   sed -i.bak "s/project1-dev/${cluster_name}/g" "${f}"
   rm "${f}.bak"
   git add "${f}"
-done < <(grep -rIl project1-dev --exclude-dir .git --exclude-dir archive --exclude-dir openspec --exclude deploy.sh .)
+done < <(grep -rIl project1-dev --exclude-dir .git --exclude-dir archive --exclude-dir openspec --exclude deploy.sh --exclude TROUBLESHOOTING.md .)
 
 # This if statement is needed for idempotency. Don't commit and push if there are no changes.
 if ! git diff HEAD --quiet; then
