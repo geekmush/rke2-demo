@@ -10,12 +10,16 @@ Enable, verify, and roll back the DO CCM on the `do-nyc3-rke2-demo` cluster.
 
 ## Prerequisites
 
+> **🔒 Fresh-cluster requirement (NON-NEGOTIABLE).** This change must be applied to a freshly-joined cluster. If a cluster from a pre-v3 bring-up (anything earlier than the install-do-ccm v3 implementation merge) is running, **`make -C terraform destroy` it first** before standing up the v3 cluster. Reason: `spec.providerID` is immutable in Kubernetes, and existing nodes joined under the v2 (or no-CCM) config have `providerID=rke2://<name>` set. The v3 RKE2 knob `cloud-provider-name: external` stops RKE2 from setting providerID on *future* node-joins, but cannot clear it on existing nodes — so DO CCM continues to reject those nodes ("missing prefix `digitalocean://`") and the LB never provisions. Per-node `kubectl delete + rke2 restart` would in principle work but risks etcd quorum loss on the CPs; the destroy + rebuild path is cleaner. VPC retention per PR #29 keeps the destroy cycle quick (~5 min destroy, ~10 min rebuild).
+
 - Cluster is up: `make -C terraform apply` succeeded, `make -C ansible play` succeeded with `failed=0`.
 - Flux is bootstrapped: [`fluxcd-bootstrap.md`](fluxcd-bootstrap.md) completed.
-- The kubelet flag (`cloud-provider=external`) is in place on every node — this is rendered automatically when `make play` runs with `rke2_kubelet_args` set in [`ansible/inventory/group_vars/all/main.yml`](../../ansible/inventory/group_vars/all/main.yml).
+- Both RKE2 cloud-provider knobs in place on every node (rendered automatically by `make play`):
+  - `cloud-provider-name: external` (top-level in `config.yaml`) — set via `rke2_cloud_provider_name` in [`ansible/inventory/group_vars/all/main.yml`](../../ansible/inventory/group_vars/all/main.yml).
+  - `kubelet-arg: ["cloud-provider=external"]` — set via `rke2_kubelet_args` in the same file.
 - `~/.config/sops/age/keys.txt` exists (operator age key for SOPS decryption).
 
-If you're standing up a fresh cluster from scratch with `enable-longhorn` + this change both in place, follow [`do-bring-up.md`](do-bring-up.md) → [`rke2-install.md`](rke2-install.md) → [`fluxcd-bootstrap.md`](fluxcd-bootstrap.md). The kubelet flag is part of `make play`; CCM enablement is part of `./deploy.sh`.
+If you're standing up a fresh cluster from scratch with `enable-longhorn` + this change both in place, follow [`do-bring-up.md`](do-bring-up.md) → [`rke2-install.md`](rke2-install.md) → [`fluxcd-bootstrap.md`](fluxcd-bootstrap.md). Both RKE2 knobs land via `make play`; CCM Kustomization enablement is part of `./deploy.sh`.
 
 ## Enable
 
@@ -145,7 +149,32 @@ Common causes:
 
 - **Stale SOPS decryption Secret in cluster.** Apply the plaintext via `sops -d flux/flux-system/sops-age.secrets.yaml | kubectl apply -f -`. See issue #24 / fix in `fc76c27`.
 - **DO PAT expired or scoped wrong.** Rotate via `sops apps/digitalocean-cloud-controller-manager/secrets.yaml`, commit + push, reconcile.
-- **Kubelet flag didn't reach the node.** `ssh root@<node-public-ip> 'grep -A2 kubelet-arg /etc/rancher/rke2/config.yaml'`. Should show `cloud-provider=external`. If empty, re-run `make -C ansible play`.
+- **RKE2 cloud-provider knobs didn't reach the node.** `ssh root@<node-public-ip> 'grep -A2 cloud-provider /etc/rancher/rke2/config.yaml'`. Should show **both** `cloud-provider-name: "external"` AND `kubelet-arg: - "cloud-provider=external"`. If either is missing, re-run `make -C ansible play`.
+
+### Test-#2 failure mode: CCM Ready but does nothing (rke2:// providerID)
+
+Test #2 on 2026-05-17 confirmed an insidious failure mode that *looks* healthy at first glance: CCM Deployment is Running and the Flux Kustomization reports Ready=True, but `EXTERNAL-IP` on ingress-nginx stays `<pending>` forever and the canary never gets a public IP. The smoking gun is in CCM's logs:
+
+```
+E ... node_controller.go:288] Error getting instance metadata for node addresses:
+    determining droplet ID from providerID: provider ID "rke2://do-nyc3-rke2-demo-cp-01"
+    is missing prefix "digitalocean://"
+
+E ... controller.go:302] "Unhandled Error" err="error processing service
+    ingress-nginx/ingress-nginx-controller (retrying with exponential backoff):
+    failed to ensure load balancer: failed to build load-balancer request:
+    no ready nodes available for load balancer"
+```
+
+This means `cloud-provider-name: external` was NOT in effect at the time the cluster first joined nodes (so RKE2's embedded cloud-controller set `providerID=rke2://...`, which is immutable). Verify the actual node state:
+
+```bash
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.providerID}{"\n"}{end}'
+# Bad:  rke2://do-nyc3-rke2-demo-cp-01
+# Good: digitalocean://571xxxxxx
+```
+
+**Recovery: this cluster cannot be salvaged in place.** Run `make -C terraform destroy` and bring up a fresh cluster from scratch — by then v3's RKE2 knob is in `group_vars/all/main.yml` and the first node-join will leave providerID empty for CCM to populate. The VPC stays per #29, so destroy + rebuild is ~15 min total.
 
 ## Rollback
 
