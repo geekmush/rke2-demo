@@ -201,37 +201,74 @@ if ! git diff HEAD --quiet; then
   git push
 fi
 
-# Add the SOPS decryption block to gotk-sync.yaml BEFORE applying the sops-age
-# Secret. Reasoning (see issue #24):
+# Get sops-age + the gotk-sync.yaml decryption block into a consistent state.
 #
-#   `flux bootstrap` regenerates gotk-sync.yaml without a decryption block.
-#   In that state, when kustomize-controller reconciles the flux-system
-#   Kustomization, it applies the SOPS-wrapped Secret manifest literally --
+# Background (issue #24 + #37):
+#
+#   `flux bootstrap` regenerates gotk-sync.yaml WITHOUT a decryption block. In
+#   that state, when kustomize-controller reconciles the flux-system
+#   Kustomization, it applies the SOPS-wrapped Secret manifest literally,
 #   writing the ENC[...] ciphertext into the cluster's sops-age Secret. If we
-#   then `kubectl apply` the plaintext over it, the controller's next
-#   reconcile will overwrite our plaintext with the ciphertext again. The
-#   safe order is:
-#     1. add decryption block to gotk-sync.yaml + commit + push  (here)
-#     2. apply plaintext sops-age Secret                          (next)
-#     3. reconcile -- controller now decrypts before applying.
+#   `kubectl apply` the plaintext over it, the controller's NEXT reconcile
+#   overwrites our plaintext with the ciphertext again -- cluster wedges with
+#   "failed to import 'age.agekey' data from sops decryption Secret
+#   'flux-system/sops-age': failed to parse and add to age identities: unknown
+#   identity type" across every Kustomization.
 #
-# Step 1 may briefly leave the Kustomization stuck on "secret 'sops-age' not
-# found" until step 2 runs; that's a transient error, not a data corruption.
+#   #28 attempted to fix this by reordering "decryption-block push first, then
+#   plaintext apply." That fix turned out to be insufficient (test #3
+#   re-demonstrated the race):
+#     - When the operator's local gotk-sync.yaml already has the block (from a
+#       prior cycle), yq is a no-op, the conditional commit is skipped, the
+#       block never reaches main. Adding `--cached` to the diff check below
+#       closes that hole.
+#     - Even with the block on main, between push and reconcile the controller
+#       can race -- it has already-stale Kustomization spec without decryption
+#       OR it applies the SOPS-wrapped manifest before reading the new
+#       decryption block. Suspend/resume eliminates the race window.
+#
+# Robust order (this block):
+#   1. Suspend the flux-system Kustomization (controller stops reconciling).
+#   2. Add the decryption block locally + commit + push UNCONDITIONALLY.
+#   3. Apply the plaintext sops-age Secret to the cluster.
+#   4. Resume the Kustomization -- controller now has both halves in place.
+#   5. Force-reconcile to avoid waiting for the 10-min retry interval.
+#
+# Steps 1 + 4 are no-ops if the Kustomization doesn't exist yet (first-ever
+# bootstrap of an empty cluster). Skipped silently in that case.
+
+if kubectl -n flux-system get kustomization flux-system >/dev/null 2>&1; then
+  flux suspend kustomization flux-system
+  suspended_flux_system=true
+else
+  suspended_flux_system=false
+fi
+
 yq -i '(select(.kind == "Kustomization") | .spec.decryption) = {"provider": "sops", "secretRef": {"name": "sops-age"}}' flux/flux-system/gotk-sync.yaml
 
 git add flux/flux-system/gotk-sync.yaml
-if ! git diff HEAD --quiet; then
+# `--cached` compares the index (post-add) to HEAD, not working tree to HEAD.
+# Needed when yq's local edit is a no-op (file already had the block in the
+# operator's checkout) but main is stale because `flux bootstrap` pushed a
+# regenerated version directly to main from its temp clone, bypassing the
+# operator's working tree. See issue #37.
+if ! git diff --cached --quiet; then
   git commit -nm "Adding decryption to gotk-sync.yaml"
   git push
 fi
 
-# Apply the SOPS AGE secret to the cluster. With the decryption block now in
-# the repo, the next reconcile will decrypt the SOPS-wrapped manifest in git
-# and confirm-rather-than-overwrite this plaintext.
+# Apply the plaintext sops-age Secret to the cluster. With flux-system
+# suspended, the kustomize-controller cannot race-overwrite this. Always
+# run -- the in-cluster Secret may be missing OR may be the SOPS ciphertext
+# from a prior unsuspended reconcile cycle.
 sops -d flux/flux-system/sops-age.secrets.yaml | kubectl apply -f -
 
-# Force-reconcile so the Kustomization recovers from any prior "secret not
-# found" failure in step 1 without waiting for the 10m retry interval.
+if $suspended_flux_system; then
+  flux resume kustomization flux-system
+fi
+
+# Force-reconcile so the Kustomization picks up both halves immediately
+# instead of waiting for the 10-minute retry interval.
 flux reconcile source git flux-system
 flux reconcile kustomization flux-system
 
