@@ -28,6 +28,19 @@ controller:
     #   https://docs.digitalocean.com/products/kubernetes/how-to/add-load-balancers/#load-balancer-configuration
     annotations:
 
+      # Force the classic public Load Balancer type. CCM v0.1.67+ defaults to
+      # REGIONAL_NETWORK if this annotation is absent -- that's DO's newer
+      # Network Load Balancer product whose IP is only routable from within
+      # DigitalOcean's network, NOT the public internet. Test #3 on
+      # 2026-05-17 hit this: the LB provisioned, cert+DNS worked, but
+      # `curl` from outside DO timed out on TCP/443. See issue #35.
+      #
+      # Caveat: changing the type on an existing LB is not supported by the
+      # DO API -- the existing Service must be kubectl-deleted and re-created
+      # for CCM to provision a new LB of the new type. Inert if you're
+      # standing the cluster up from scratch.
+      service.beta.kubernetes.io/do-loadbalancer-type: "REGIONAL"
+
       # Predictable name in the DO Networking UI. CCM does NOT rename an
       # existing LB if this value changes -- it creates a new one and
       # orphans the old. Don't churn this annotation casually.
