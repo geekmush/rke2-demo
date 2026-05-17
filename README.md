@@ -2,7 +2,7 @@
 
 RKE2 + Longhorn cluster bring-up. Test phase on DigitalOcean, production phase on bare metal. Platform components and cluster apps managed via FluxCD using [devopscoop's fluxcd-template](https://github.com/devopscoop/fluxcd-template) (vendored as a git subtree). Cluster operations via `k9s` / OpenLens on the operator workstation.
 
-> **Status:** Phase 1 (RKE2 cluster on DigitalOcean) and Phase 2 (per-worker Block Storage volumes for Longhorn) complete. Phase 3 (FluxCD bootstrap + apps stack) in progress -- template vendored, bootstrap is the next operator step.
+> **Status:** Phase 1 (RKE2 cluster on DigitalOcean) and Phase 2 (per-worker Block Storage volumes for Longhorn) complete. Phase 3 (FluxCD-managed apps) in progress -- platform components (cert-manager, ingress-nginx, external-dns, DO CCM) reconciled; Longhorn enablement (Phase 3c) is the active workstream.
 
 ## Why this repo exists
 
@@ -14,7 +14,7 @@ devopscoop's templates cover FluxCD-managed cluster apps but do not yet ship an 
 | --- | --- | --- | --- |
 | 1 — Bring-up | 3 CP + 3 worker droplets on DO | none (deferred) | First end-to-end RKE2 install via Ansible |
 | 2 — Storage substrate | Same droplets + dedicated DO Block Storage volumes | volumes attached, not yet formatted by Longhorn | Stages disks Longhorn will claim once FluxCD installs it |
-| 3 — GitOps | Same | Longhorn installed by FluxCD | FluxCD vendored as subtree; manages cert-manager, ingress-nginx, external-dns, Longhorn, and the rest of the apps stack |
+| 3 — GitOps | Same | Longhorn V1 filesystem-mode (ext4 on dedicated DO volumes at `/var/lib/longhorn`); hard-isolated from OS disk via opt-in node labels | FluxCD vendored as subtree; manages cert-manager, ingress-nginx, external-dns, DO CCM, Longhorn, and the rest of the apps stack |
 | 4 — Production | Bare metal | dedicated disks | Same modules/roles, different provider |
 | 5 — Upstream | n/a | n/a | Contribute RKE2 parts to devopscoop |
 
@@ -58,13 +58,15 @@ devopscoop's templates cover FluxCD-managed cluster apps but do not yet ship an 
 Phase 1 substrate (VPC + firewall + SSH key + 6 droplets + cloud-init) is provisioned with the OpenTofu module under [`terraform/modules/do-droplet-infra/`](terraform/modules/do-droplet-infra/), consumed by the root env at [`terraform/environments/do-test/`](terraform/environments/do-test/). RKE2 is installed on that substrate via Ansible (3 CP HA + 3 workers).
 
 End-to-end operator procedure:
-1. [`docs/runbooks/do-bring-up.md`](docs/runbooks/do-bring-up.md) — droplets, VPC, firewall, internal CP load balancer.
-2. [`docs/runbooks/rke2-install.md`](docs/runbooks/rke2-install.md) — RKE2 server + agent install, kubeconfig retrieval, operator SSH tunnel.
+1. [`docs/runbooks/do-bring-up.md`](docs/runbooks/do-bring-up.md) — droplets, VPC, firewall, internal CP load balancer, Phase 2 Block Storage volumes.
+2. [`docs/runbooks/rke2-install.md`](docs/runbooks/rke2-install.md) — RKE2 server + agent install, Longhorn disk prep (mkfs + mount + node label/annotate), kubeconfig retrieval, operator SSH tunnel.
+3. [`docs/runbooks/fluxcd-bootstrap.md`](docs/runbooks/fluxcd-bootstrap.md) — `flux bootstrap` + first reconcile of the platform components.
+4. [`docs/runbooks/install-do-ccm.md`](docs/runbooks/install-do-ccm.md) — DigitalOcean Cloud Controller Manager (LoadBalancer Service support).
+5. [`docs/runbooks/longhorn-enablement.md`](docs/runbooks/longhorn-enablement.md) — Phase 3c Longhorn enablement, verify, rollback.
 
-Network topology: [`docs/diagrams/do-network.md`](docs/diagrams/do-network.md).
-RKE2 cluster topology: [`docs/diagrams/rke2-topology.md`](docs/diagrams/rke2-topology.md).
+When something goes sideways: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — symptom-indexed reference from the bring-up validation arc.
 
-Rancher, Longhorn, and FluxCD land in subsequent changes.
+Diagrams: [`docs/diagrams/do-network.md`](docs/diagrams/do-network.md), [`docs/diagrams/rke2-topology.md`](docs/diagrams/rke2-topology.md), [`docs/diagrams/public-traffic-path.md`](docs/diagrams/public-traffic-path.md), [`docs/diagrams/longhorn-topology.md`](docs/diagrams/longhorn-topology.md), [`docs/diagrams/dns-migration.md`](docs/diagrams/dns-migration.md).
 
 ## Contributing
 

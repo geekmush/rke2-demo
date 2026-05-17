@@ -133,9 +133,11 @@ grep -h Password /etc/ssh/sshd_config.d/*.conf      # PasswordAuthentication no
 
 ### Phase 2 storage substrate (DO Block Storage volumes)
 
-After the droplet apply, the Tofu module also provisions **one 50 GB DigitalOcean Block Storage volume per worker** (three volumes, ~$15/month at $0.10/GB-month). Volumes are attached to the workers but left **raw**: no filesystem, no mount. Longhorn (installed by FluxCD in Phase 3) consumes them in block-device mode -- the more efficient path -- which requires the disks to stay un-formatted.
+After the droplet apply, the Tofu module also provisions **one 50 GB DigitalOcean Block Storage volume per worker** (three volumes, ~$15/month at $0.10/GB-month). Volumes are attached raw at the DO level (no `initial_filesystem_type`). The Ansible `longhorn_disk_prep` role mkfs's ext4 and mounts each volume at `/var/lib/longhorn` during Phase 2 of the play -- Longhorn (installed by FluxCD in Phase 3) then consumes those mounts via its V1 filesystem-mode data engine.
 
-Stable device paths are surfaced as a Tofu output:
+> **Why V1 / filesystem, not V2 / block?** Longhorn V2 is still Tech Preview in 1.11 and has hugepages / kernel / CPU prereqs the `s-4vcpu-8gb` workers can't comfortably meet. See [`openspec/changes/enable-longhorn/proposal.md`](../../openspec/changes/enable-longhorn/proposal.md) for the decision record.
+
+Stable device paths are surfaced as a Tofu output and consumed by the Ansible inventory renderer:
 
 ```bash
 make -C terraform output worker_longhorn_devices
@@ -146,7 +148,7 @@ make -C terraform output worker_longhorn_devices
 # }
 ```
 
-Verify on a worker:
+Verify *immediately after Tofu apply* (before `make play`), on a worker:
 
 ```bash
 ssh -i ~/.ssh/do_nyc3_rke2_demo_ed25519 root@<worker-public-ip>
@@ -155,11 +157,21 @@ ls -l /dev/disk/by-id/scsi-0DO_Volume_*-longhorn               # symlink resolve
 mount | grep sda                                               # nothing -- raw, unmounted
 ```
 
-If `lsblk` shows a filesystem or mount on the new disk, something pre-formatted it -- check `cloud-init.yaml.tftpl` for unintended changes and `digitalocean_volume.longhorn`'s `initial_filesystem_type` (must stay `null`).
+Verify *after `make play`*:
 
-**Resize later (non-destructive):** bump `var.longhorn_volume_size_gb` in `terraform/environments/do-test/terraform.tfvars`; `make apply`. DO grows the volume in place. Longhorn (once installed) needs a manual disk-resize through its UI/API to consume the new space.
+```bash
+ssh -i ~/.ssh/do_nyc3_rke2_demo_ed25519 root@<worker-public-ip>
+findmnt /var/lib/longhorn                                      # mounted from /dev/sda (the DO volume), ext4, opts include nofail,noatime
+grep longhorn /etc/fstab                                       # UUID=... persisted
+stat -c '%a %U:%G' /var/lib/longhorn                           # 700 root:root
+lsblk -f                                                       # sda shows ext4 FSTYPE + a UUID
+```
 
-**Destroy semantics:** `make -C terraform destroy` removes the volumes too. Once Longhorn is installed and holding data, that data is **gone** with the volumes. Phase 3 will document Longhorn's snapshot/backup target setup so destroy is recoverable.
+If `lsblk` shows a filesystem or mount on the new disk *before* `make play`, something pre-formatted it -- check `cloud-init.yaml.tftpl` for unintended changes and `digitalocean_volume.longhorn`'s `initial_filesystem_type` (must stay `null`).
+
+**Resize later (non-destructive):** bump `var.longhorn_volume_size_gb` in `terraform/environments/do-test/terraform.tfvars`; `make apply`. DO grows the volume in place. On each worker: `sudo resize2fs /dev/disk/by-id/scsi-0DO_Volume_*-longhorn`. Longhorn re-discovers the new capacity on its next reconcile.
+
+**Destroy semantics:** `make -C terraform destroy` removes the volumes too. Once Longhorn is installed and holding data, that data is **gone** with the volumes (no S3 backup target wired up yet — see [`docs/runbooks/longhorn-enablement.md`](longhorn-enablement.md) deferred work). For end-to-end Longhorn enablement see that runbook + the [`docs/diagrams/longhorn-topology.md`](../diagrams/longhorn-topology.md) diagram.
 
 ### Destroy (between sessions)
 
