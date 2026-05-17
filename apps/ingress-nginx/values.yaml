@@ -23,15 +23,29 @@ controller:
 
   service:
 
-    # https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.13/guide/service/annotations/
+    # DigitalOcean LB annotations consumed by digitalocean-cloud-controller-manager.
+    # Full annotation reference:
+    #   https://docs.digitalocean.com/products/kubernetes/how-to/add-load-balancers/#load-balancer-configuration
     annotations:
 
-      # If you have a development cluster, you should uncomment this to make ingresses internal (private) by default.
-      # At some point this will be deprecated in favor of: service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
-      # service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+      # Predictable name in the DO Networking UI. CCM does NOT rename an
+      # existing LB if this value changes -- it creates a new one and
+      # orphans the old. Don't churn this annotation casually.
+      service.beta.kubernetes.io/do-loadbalancer-name: "do-nyc3-rke2-demo-ingress"
 
-      # An NLB is required for: exposing TCP services, passing real IP addresses through to the ingress, and creating internal load balancers.
-      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      # Smallest LB tier (~$12/mo). Resize via this annotation is
+      # non-destructive (no IP change). Bump if traffic outgrows it.
+      service.beta.kubernetes.io/do-loadbalancer-size-unit: "1"
+
+      # tcp = L4 passthrough. ingress-nginx terminates TLS using
+      # cert-manager-issued certs. http/https modes would terminate at
+      # the DO LB using DO's certs -- incompatible with our cert-manager
+      # flow. See openspec/changes/install-do-ccm/design.md.
+      service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
+
+      # DO's built-in Let's Encrypt + DNS integration would race
+      # cert-manager + external-dns. We own both -- disable DO's.
+      service.beta.kubernetes.io/do-loadbalancer-disable-lets-encrypt-dns-records: "true"
 
     # Setting this to Local so we can see real client IPs in our logs - so we can see where our traffic is actually coming from.
     externalTrafficPolicy: "Local"

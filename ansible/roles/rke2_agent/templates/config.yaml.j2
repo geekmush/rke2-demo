@@ -3,3 +3,12 @@ token: "{{ rke2_agent_token }}"
 server: "https://{{ cp_endpoint }}:{{ rke2_supervisor_port }}"
 
 node-ip: {{ private_ip }}
+
+{# Kubelet flags. Currently used by install-do-ccm to set                  #}
+{# cloud-provider=external -- see ansible/inventory/group_vars/all/main.yml.#}
+{% if rke2_kubelet_args %}
+kubelet-arg:
+{% for arg in rke2_kubelet_args %}
+  - "{{ arg }}"
+{% endfor %}
+{% endif %}

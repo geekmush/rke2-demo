@@ -47,7 +47,8 @@ Bare metal. Modules and Ansible roles must be parameterized so the same code tar
 - **SSH (22):** open to `0.0.0.0/0`, **key-only**. No password auth, no root password login. Firewall + `sshd_config` must both enforce this.
 - **Kubernetes API (6443):** VPC-internal only. Operators reach it via SSH tunnel or the Rancher UI — never exposed publicly.
 - **RKE2 inter-node ports:** VPC-internal only.
-- Anything that loosens this needs an explicit user decision recorded in a runbook.
+- **HTTP/80, HTTPS/443:** open to `0.0.0.0/0` on the DigitalOcean Load Balancer provisioned by the DO CCM for ingress-nginx. Routes to ingress-nginx pods inside the VPC. **Deliberate public surface** — see [`docs/runbooks/install-do-ccm.md`](docs/runbooks/install-do-ccm.md) for rationale + mitigations. Production-phase plan is an LB-level source-IP allowlist.
+- Anything that loosens this further needs an explicit user decision recorded in a runbook.
 
 ## Repository layout
 

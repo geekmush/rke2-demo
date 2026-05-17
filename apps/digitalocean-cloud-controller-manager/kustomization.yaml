@@ -1,0 +1,18 @@
+# DO CCM is a single vendored upstream YAML (ccm.yaml) plus a SOPS-encrypted
+# Secret (secrets.yaml). No HelmRelease, no ConfigMap-from-values: the
+# upstream manifest is self-contained and we don't override anything.
+#
+# The upstream Deployment + ServiceAccount + ClusterRole + ClusterRoleBinding
+# are all pinned to namespace: kube-system. The top-level `namespace:` here
+# is defensive -- it errors loudly if a future upstream release ever drops the
+# explicit namespace on a resource we then forget to patch.
+#
+# Cluster-specific overrides go in this file as a `patches:` block, not
+# inline edits to ccm.yaml. See docs/runbooks/install-do-ccm.md.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kube-system
+resources:
+  - ccm.yaml
+  - secrets.yaml

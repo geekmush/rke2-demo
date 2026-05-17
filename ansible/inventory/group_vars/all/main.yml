@@ -65,3 +65,21 @@ rke2_service_cidr: "10.245.0.0/16"
 # Phase 4 will need to override this to whatever the host's VPC-equivalent
 # interface is named (likely `bond0` or similar).
 rke2_canal_flannel_iface: eth1
+
+# Extra kubelet flags rendered into /etc/rancher/rke2/config.yaml's
+# `kubelet-arg:` list on every node (server + agent). Empty by default.
+#
+# install-do-ccm adds `cloud-provider=external` so the DigitalOcean
+# Cloud Controller Manager can untaint nodes (kubelet adds the
+# `node.cloudprovider.kubernetes.io/uninitialized` taint at startup
+# when this flag is set; CCM removes it after initializing each node)
+# and so LoadBalancer Services get real DO LB IPs.
+#
+# Without `cloud-provider=external`, CCM still runs but cannot complete
+# node initialization (no providerID, no zone labels) and LB
+# provisioning behavior is undefined per the upstream CCM docs.
+#
+# Phase 4 bare-metal removes CCM and reverts this to `[]` (or whatever
+# the bare-metal load-balancer integration needs).
+rke2_kubelet_args:
+  - "cloud-provider=external"

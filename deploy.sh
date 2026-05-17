@@ -209,17 +209,17 @@ case "$k8s_platform" in
     app_list="metallb.yaml metallb-custom-resources.yaml"
     ;;
   rke2)
-    # TEMPORARY (Phase 3b only): longhorn dropped so we can validate the
-    # Flux + core_apps bring-up with a clean cluster state. The
-    # apps/longhorn/*.secrets.yaml files are encrypted with the template
-    # author's age key (unreadable to us) and would put a permanently-failing
-    # Kustomization in flux-system. Phase 3c restores this to:
-    #     app_list="longhorn.yaml"
-    # alongside the longhorn-config fixes (replace upstream-author-encrypted
-    # secrets with cluster-specific ones; point Longhorn at the per-worker
-    # /dev/disk/by-id/scsi-0DO_Volume_* devices from the Tofu output
-    # `worker_longhorn_devices`).
-    app_list=""
+    # do-ccm: DigitalOcean Cloud Controller Manager. Provides Service
+    #   type=LoadBalancer provisioning + node-side cloud integration.
+    #   Required at this phase because ingress-nginx is a LoadBalancer
+    #   Service and would otherwise sit at EXTERNAL-IP <pending>.
+    #   See openspec/changes/install-do-ccm/.
+    #
+    # longhorn: distributed block storage. Not yet enabled at this
+    #   commit -- restored as part of openspec/changes/enable-longhorn
+    #   once that lands (its Group-1 PR is the appropriate place to add
+    #   "longhorn.yaml" to this list).
+    app_list="digitalocean-cloud-controller-manager.yaml"
     ;;
   *)
     echo "ERROR: k8s_platform invalid" >&2

@@ -29,6 +29,15 @@ disable:
   - {{ c }}
 {% endfor %}
 
+{# Kubelet flags. Currently used by install-do-ccm to set                  #}
+{# cloud-provider=external -- see ansible/inventory/group_vars/all/main.yml.#}
+{% if rke2_kubelet_args %}
+kubelet-arg:
+{% for arg in rke2_kubelet_args %}
+  - "{{ arg }}"
+{% endfor %}
+{% endif %}
+
 {# Bootstrap vs join: only the first CP in inventory inits a cluster, and  #}
 {# only when the LB-probe at play-start showed no existing supervisor.     #}
 {% if rke2_should_init | bool and inventory_hostname == groups['rke2_servers'][0] %}

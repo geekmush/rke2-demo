@@ -115,6 +115,8 @@ RKE2 honors `kubelet-arg` in `/etc/rancher/rke2/config.yaml`. We want `--cloud-p
 
 **Pick A**. Future-proof for the next kubelet arg we want (e.g. `--node-labels` for custom labels, `--max-pods`, etc.) without re-touching the templates. The default is a list, allowing additions later via group_vars or per-host overrides.
 
+> **Implementation note**: at implementation time, we found this codebase has **zero** role `defaults/` files — every default lives in `ansible/inventory/group_vars/all/main.yml` by convention. The PR follows that convention (`rke2_kubelet_args` lives in `group_vars/all/main.yml`, not in `rke2_common/defaults/`). Same shape, same behavior, same Jinja loop in the templates.
+
 ```yaml
 # ansible/roles/rke2_common/defaults/main.yml (addition)
 # kubelet flags rendered into /etc/rancher/rke2/config.yaml. Empty by default;
