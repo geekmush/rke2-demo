@@ -27,6 +27,19 @@ spec:
         kind: HelmRepository
         name: ingress-nginx
   interval: 10m
+  # disableWait while the cluster has no functioning cloud-controller. The
+  # Service is of type LoadBalancer; without a CCM that can provision a DO
+  # LB the Service stays at EXTERNAL-IP <pending> and helm --wait blocks
+  # on it forever, failing the install. Test #2 on 2026-05-17 proved that
+  # the CCM wired up by PR #30 doesn't actually work (RKE2 sets a non-DO
+  # providerID that CCM refuses to process), so we're back to a no-CCM
+  # baseline for the moment. Drop these blocks again once a follow-up
+  # change has CCM provisioning real LBs end-to-end. See install-do-ccm
+  # proposal (revision 3, in progress) for the rework path.
+  install:
+    disableWait: true
+  upgrade:
+    disableWait: true
   valuesFrom:
     - kind: ConfigMap
       name: ingress-nginx-values

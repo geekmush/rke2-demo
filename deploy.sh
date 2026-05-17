@@ -209,17 +209,24 @@ case "$k8s_platform" in
     app_list="metallb.yaml metallb-custom-resources.yaml"
     ;;
   rke2)
-    # do-ccm: DigitalOcean Cloud Controller Manager. Provides Service
-    #   type=LoadBalancer provisioning + node-side cloud integration.
-    #   Required at this phase because ingress-nginx is a LoadBalancer
-    #   Service and would otherwise sit at EXTERNAL-IP <pending>.
-    #   See openspec/changes/install-do-ccm/.
+    # CCM (digitalocean-cloud-controller-manager) is intentionally OFF here
+    # while install-do-ccm is reworked. Test #2 on 2026-05-17 found that
+    # the v2 design (kubelet --cloud-provider=external alone) is
+    # insufficient -- RKE2 sets providerID=rke2://... at first node-join,
+    # which is immutable, and CCM refuses to process nodes lacking the
+    # digitalocean:// prefix. The fix is RKE2's cloud-provider-name=external
+    # in server/agent config and must be in place BEFORE first node-join.
+    # That rework lives in openspec/changes/install-do-ccm/ (revision 3,
+    # in progress). The vendored CCM manifest + Secret + per-app Flux
+    # Kustomization manifest stay in the repo as building blocks; only the
+    # wiring (this app_list + flux/flux-system/kustomization.yaml's
+    # resources list) is backed out.
     #
     # longhorn: distributed block storage. Not yet enabled at this
     #   commit -- restored as part of openspec/changes/enable-longhorn
     #   once that lands (its Group-1 PR is the appropriate place to add
     #   "longhorn.yaml" to this list).
-    app_list="digitalocean-cloud-controller-manager.yaml"
+    app_list=""
     ;;
   *)
     echo "ERROR: k8s_platform invalid" >&2
