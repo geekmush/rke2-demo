@@ -257,6 +257,26 @@ if ! git diff --cached --quiet; then
   git push
 fi
 
+# Also update the IN-CLUSTER Kustomization spec directly while suspended.
+# Pushing to git alone is not enough (issue #47): when kustomize-controller
+# resumes, its first reconcile reads its own spec from the live CR (NOT from
+# git) to decide whether to decrypt manifests. If that live spec doesn't have
+# .spec.decryption yet, the first reconcile applies sops-age.secrets.yaml
+# from git as ciphertext, overwriting our plaintext apply below. Subsequent
+# reconciles then see the in-cluster Secret as ciphertext and can't use it
+# as a decryption key -- hard-fail with "unknown identity type" cascading
+# to every child Kustomization.
+#
+# kubectl apply -f on the live CR updates the spec atomically while the
+# controller is suspended, so the very first post-resume reconcile uses
+# the decryption-aware spec.
+#
+# Gated on suspended_flux_system because on first-ever bootstrap the
+# Kustomization CR doesn't exist yet -- nothing to update.
+if $suspended_flux_system; then
+  kubectl apply -f flux/flux-system/gotk-sync.yaml
+fi
+
 # Apply the plaintext sops-age Secret to the cluster. With flux-system
 # suspended, the kustomize-controller cannot race-overwrite this. Always
 # run -- the in-cluster Secret may be missing OR may be the SOPS ciphertext
