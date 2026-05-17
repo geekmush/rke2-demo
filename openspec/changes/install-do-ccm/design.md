@@ -106,58 +106,75 @@ Encrypted by `./encrypt_secrets.sh` per the template convention. The kustomize-c
 
 **Production-phase note**: split this into a CCM-only PAT scoped to `loadbalancer:read+write, firewall:read+write, vpc:read, droplet:read`. DO supports scoped tokens as of 2024. Out of scope for the test phase.
 
-## Ansible role / kubelet flag
+## Ansible: two knobs needed (v3 update)
 
-RKE2 honors `kubelet-arg` in `/etc/rancher/rke2/config.yaml`. We want `--cloud-provider=external` on every kubelet (server and agent). Two ways to add:
+> **Revision 3 changed this section materially.** v2 set only the kubelet-arg, which test #2 proved insufficient. v3 sets BOTH the kubelet-arg AND the RKE2-level `cloud-provider-name=external`. Both are required; neither is sufficient alone.
 
-- **Option A**: Add a new `rke2_kubelet_args` default in `rke2_common/defaults/main.yml`, render it from both server and agent templates with a `{% for arg in rke2_kubelet_args %}` loop. Clean, future-proof for additional kubelet args.
-- **Option B**: Hard-code `kubelet-arg: ["cloud-provider=external"]` directly in both templates. Two lines total. Smaller diff.
+### Knob 1: kubelet-arg (already in main from PR #30)
 
-**Pick A**. Future-proof for the next kubelet arg we want (e.g. `--node-labels` for custom labels, `--max-pods`, etc.) without re-touching the templates. The default is a list, allowing additions later via group_vars or per-host overrides.
+`rke2_kubelet_args` in `ansible/inventory/group_vars/all/main.yml` defaults to `["cloud-provider=external"]`. Both `rke2_server` and `rke2_agent` templates render a conditional `kubelet-arg:` block from it. Purpose: tells the kubelet to expect an external cloud-provider to handle node initialization.
 
-> **Implementation note**: at implementation time, we found this codebase has **zero** role `defaults/` files — every default lives in `ansible/inventory/group_vars/all/main.yml` by convention. The PR follows that convention (`rke2_kubelet_args` lives in `group_vars/all/main.yml`, not in `rke2_common/defaults/`). Same shape, same behavior, same Jinja loop in the templates.
+The original v2 reasoning was that this kubelet flag alone would produce the `node.cloudprovider.kubernetes.io/uninitialized` taint that CCM uses as its initialize-me signal. Empirically (test #2): **it doesn't, on RKE2.** RKE2's own embedded cloud-controller logic intercedes and sets `spec.providerID=rke2://<name>` at first node-join, which short-circuits the kubelet's taint logic. Once providerID is set, kubelet considers the node "initialized" and no taint is added.
 
-```yaml
-# ansible/roles/rke2_common/defaults/main.yml (addition)
-# kubelet flags rendered into /etc/rancher/rke2/config.yaml. Empty by default;
-# install-do-ccm appends `cloud-provider=external` here so CCM can untaint
-# nodes and provision LoadBalancer Services via the DO API.
-rke2_kubelet_args:
-  - "cloud-provider=external"
-```
+### Knob 2: RKE2 cloud-provider-name (new in v3, the load-bearing one)
+
+Add `cloud-provider-name: external` to both `rke2_server/templates/config.yaml.j2` and `rke2_agent/templates/config.yaml.j2`. This tells RKE2 NOT to set its own providerID at node-join, leaving the field empty for DO CCM to populate with `digitalocean://<droplet-id>` later.
 
 ```jinja
-# ansible/roles/rke2_server/templates/config.yaml.j2 (addition, at the bottom)
-{% if rke2_kubelet_args %}
-kubelet-arg:
-{% for arg in rke2_kubelet_args %}
-  - "{{ arg }}"
-{% endfor %}
-{% endif %}
+# ansible/roles/rke2_server/templates/config.yaml.j2 (addition, top-level)
+# Disable RKE2's embedded cloud-controller so DO CCM can take over node
+# initialization. Without this, RKE2 sets providerID=rke2://<name> at first
+# join -- which is immutable in Kubernetes and blocks CCM from setting
+# the digitalocean://<id> value its service-LB controller requires. Pairs
+# with kubelet-arg=cloud-provider=external rendered above.
+cloud-provider-name: external
 ```
 
-Same block at the end of `rke2_agent/templates/config.yaml.j2`.
+Same line in `rke2_agent/templates/config.yaml.j2`. Two-line change total.
 
-The existing handlers in `rke2_server` and `rke2_agent` already restart the rke2 services on config change. After applying this PR's Ansible work, `make play` produces `changed` on every host the first time (config file edits → service restarts), then `changed=0` on subsequent runs.
+Optionally (nice-to-have): introduce `rke2_cloud_provider_name` in `group_vars/all/main.yml` defaulting to `"external"`, render through a `{% if rke2_cloud_provider_name %}` guard. Mirrors the `rke2_kubelet_args` pattern and lets Phase 4 bare-metal set it to empty to revert.
 
-### Bring-up race vs untaint dance
+### Why both knobs
 
-When the rke2 services restart with the new kubelet flag, every node comes up tainted with `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule`. Pods without that toleration cannot schedule. The CCM Deployment **does** tolerate the taint (see the vendored manifest's `tolerations` block), so it lands fine. Once CCM initializes a node (sets `providerID`, zone labels, etc.), it removes the taint and other workloads schedule normally.
+| Setting | Without it | With it |
+|---|---|---|
+| `cloud-provider-name: external` | RKE2 sets `providerID=rke2://<name>` → immutable → CCM rejects every node | RKE2 leaves providerID empty → CCM populates with `digitalocean://<id>` |
+| `kubelet-arg: cloud-provider=external` | kubelet doesn't add the `uninitialized` taint (but this only matters if RKE2 isn't already providing initialization, which it stops doing when `cloud-provider-name=external` is set) | kubelet adds the `uninitialized` taint → general workloads cannot schedule until CCM untaints → enforces the bring-up sequencing |
 
-In a fresh bring-up sequence (`make apply` → `make play` → `./deploy.sh`):
-- After `make play`, the cluster nodes are tainted. RKE2 system pods (kube-proxy, coredns, etc.) tolerate `CriticalAddonsOnly` and start normally. User workloads (cert-manager, ingress-nginx, longhorn, the rest) stay Pending.
-- `./deploy.sh` reconciles all Flux Kustomizations in parallel. Each Kustomization either succeeds (CCM) or fails with `pod has unbound PersistentVolumeClaims`-style errors (everything else) until CCM removes the taints.
-- Once CCM untaints (~30s after Deployment becomes Ready), the rest reconcile.
+Both are needed. Setting only the kubelet-arg (the v2 mistake) leaves RKE2 still in charge of providerID. Setting only `cloud-provider-name` would *probably* work for LB provisioning but produces undefined node-startup behavior because kubelet doesn't know an external CCM is incoming.
 
-This is normal CCM bring-up behavior, not a bug. The install-do-ccm runbook documents the expected pending-state window so it's not mistaken for an actual failure.
+### Bring-up race vs untaint dance (correct v3 behavior)
 
-### Re-running play on a cluster that already had CCM
+With both knobs set on a **fresh** cluster:
 
-Idempotent. The kubelet-arg lines are already in `config.yaml`, the rke2 services already have the flag, the kubelet already passes `--cloud-provider=external`. No restart, no change.
+1. `make play` → RKE2 starts with empty providerID + kubelet flag. Kubelet adds `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` to its node.
+2. RKE2 system pods (kube-proxy, coredns, etc.) tolerate `CriticalAddonsOnly` and start normally. User workloads (cert-manager, ingress-nginx, etc.) stay `Pending`.
+3. `./deploy.sh` reconciles Flux Kustomizations. CCM Kustomization succeeds (CCM Deployment tolerates the uninitialized taint). Other Kustomizations stay degraded with "pod stuck Pending" until CCM untaints.
+4. CCM Deployment reaches Ready (~30s after Kustomization applies), initializes each node (calls DO API for metadata, sets `providerID=digitalocean://<id>`, adds region/zone labels), removes the `uninitialized` taint.
+5. Other Kustomizations unstick within their next reconcile cycle.
 
-### Rolling back the kubelet flag
+Typical wall clock from `./deploy.sh` start to all-apps-Ready: 2-4 minutes.
 
-`make play` after removing `cloud-provider=external` from `rke2_kubelet_args` (e.g. set to `[]` in inventory group_vars) re-renders `config.yaml` without the kubelet-arg lines and restarts rke2. Nodes come up untainted. CCM Deployment, if still present, sits idle (no taints to remove, but Service-LB provisioning still works). Removing CCM is a separate step (drop the Kustomization from `deploy.sh` `app_list`, reconcile).
+### The fresh-cluster requirement (test-#2 takeaway, not in v2)
+
+`spec.providerID` is **immutable** in Kubernetes once set on a Node object. An existing cluster running with `rke2://...` providerIDs cannot be migrated in-place by adding `cloud-provider-name=external` — the new flag stops RKE2 from setting providerID on *future* node joins, but doesn't clear it on existing nodes.
+
+Two options to migrate, neither attractive:
+
+- **A. `kubectl delete node <name>` + `systemctl restart rke2-agent` per worker**, then same for CPs one at a time. Per-node, providerID gets cleared, re-joins fresh, CCM populates. Risk: rolling CP restart can race etcd quorum loss. Untested.
+- **B. Full destroy + rebuild** via `make -C terraform destroy && make apply && make play`. Clean. With PR #29's VPC retention, only droplets/LB/volumes/firewall get torn down (~5 min) and rebuilt (~10 min). Total ~15 minutes. **This is the proposal's choice.**
+
+The runbook's "Prereqs" section calls this out explicitly so operators don't try to apply v3 in place.
+
+### Re-running play on a cluster that already had v3 applied
+
+Idempotent. Templates render the same config, no changes, no service restart.
+
+### Rolling back
+
+`rke2_cloud_provider_name: ""` (or set the knob explicitly to empty) + `rke2_kubelet_args: []` in `group_vars/all/main.yml` + `make play` re-renders `config.yaml` without both lines. RKE2 services restart. Existing nodes' `providerID=digitalocean://...` values stick around (immutable) but no longer get refreshed; CCM has nothing to do.
+
+Note: rolling back leaves the cluster in a half-state (CCM Deployment may still be running per Flux, but kubelets behave normally). To fully roll back: also drop the CCM Kustomization from `deploy.sh` rke2 app_list + `flux/flux-system/kustomization.yaml`'s resources + reconcile (this is what PR #31 does for the test-#2 backout case).
 
 ## ingress-nginx values diff (semantic)
 
@@ -264,6 +281,6 @@ CCM is DO-specific. On bare metal it's removed entirely and replaced with one of
 - **MetalLB** (already vendored under `apps/metallb/`): assigns IPs from a pool, handles ARP/BGP.
 - **kube-vip**: similar role, less BGP-heavy.
 
-The kubelet `--cloud-provider=external` flag also goes — bare-metal kubelets don't need it. Reverting is a one-line change to `rke2_kubelet_args` group_vars + `make play`.
+The kubelet `--cloud-provider=external` flag also goes — bare-metal kubelets don't need it. Same for the v3-added `cloud-provider-name: external` RKE2 knob. Reverting both is a single change to `group_vars/all/main.yml` (set `rke2_kubelet_args: []` and remove or empty the cloud-provider-name knob) + `make play`. As with applying v3, removing it cleanly requires a fresh cluster (the existing nodes will retain their `digitalocean://...` providerIDs, which is harmless but isn't bare-metal-flavored — the next bring-up will be clean).
 
 The ingress-nginx values changes from this PR (DO-specific annotations) would also be reverted/replaced with MetalLB-specific configuration. Phase-4 OpenSpec proposal will own that swap. The decision to expose public HTTP/HTTPS at the cluster level (recorded in the access-model runbook) carries forward as a policy, independent of the LB implementation.

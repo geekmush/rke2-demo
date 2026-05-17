@@ -2,7 +2,7 @@
 
 **Tracking issue:** [#25](https://github.com/geekmush/do-nyc3-rke2-demo/issues/25)
 **Phase:** 3d — DigitalOcean Cloud Controller Manager.
-**Status:** draft 2026-05-16 (revised after pre-flight findings — see below).
+**Status:** draft 2026-05-17 (revision 3 — see "Test #2 findings" below for what changed since the PR-#30 implementation went live).
 
 ## Why
 
@@ -17,14 +17,39 @@ This change installs the [`digitalocean-cloud-controller-manager`](https://githu
 
 End-state outcome: the canary Ingress from the unattended-test runbook becomes fully exercisable — public HTTPS traffic to `canary.escapekey.org` lands at ingress-nginx through a DO public LB, with a real Let's Encrypt cert and an external-dns-managed A record.
 
-## Pre-flight findings (corrected from initial draft)
+## Pre-flight findings (revision 1, still valid)
 
-Two assumptions in the original draft turned out to be wrong on closer inspection. Surfacing them up front because they reshape the install path:
+Two upstream-shape findings from before any implementation:
 
 1. **DO does not publish a Helm chart for the CCM.** The original draft cited `https://charts.digitalocean.com/`, but that host doesn't resolve and no community Helm chart exists on ArtifactHub. The CCM upstream README directs you to vendor a single self-contained YAML manifest from [`releases/digitalocean-cloud-controller-manager/v<x.y.z>.yml`](https://github.com/digitalocean/digitalocean-cloud-controller-manager/tree/master/releases/digitalocean-cloud-controller-manager) in the project's GitHub repo. The manifest carries the Deployment + ServiceAccount + ClusterRole + ClusterRoleBinding and is pinned to a `kube-system` namespace by default. Install mechanism therefore = **vendored YAML reconciled by a Flux `Kustomization`**, not a `HelmRelease`.
-2. **CCM requires `--cloud-provider=external` on every kubelet** per the upstream getting-started docs. RKE2 doesn't set this by default. Without it, kubelet doesn't mark nodes with the `node.cloudprovider.kubernetes.io/uninitialized` taint that CCM uses as its "please initialize me" signal — so node-side features (`spec.providerID` injection, region/zone labels) don't happen, and `LoadBalancer` Service provisioning is best-effort / undefined. **This is an Ansible role change**, not a Flux app change, and it interacts with bring-up sequencing: every kubelet starts up tainted, so general workloads cannot schedule until CCM is up to untaint. CCM itself tolerates the taint so it can land.
+2. **CCM requires `--cloud-provider=external` on every kubelet** per the upstream getting-started docs. RKE2 doesn't set this by default.
 
-These two findings drive the design — see "What this change ships" + the Sequencing note below.
+## Test #2 findings (revision 2 → revision 3)
+
+Revision 2 (PR #30) acted on finding #2 above by setting `kubelet-arg: ["cloud-provider=external"]` in RKE2's `/etc/rancher/rke2/config.yaml`. End-to-end test on 2026-05-17 proved this is **necessary but insufficient**:
+
+- RKE2 has its own embedded cloud-controller logic that sets `spec.providerID = rke2://<node-name>` at first node-join — *regardless* of the kubelet flag.
+- `spec.providerID` is **immutable** in Kubernetes once set on a Node object.
+- DO CCM's node controller refuses to process any node whose providerID doesn't start with `digitalocean://`:
+  `Error getting instance metadata for node addresses: provider ID "rke2://..." is missing prefix "digitalocean://"`
+- DO CCM's service-LB controller then refuses to build any LB because the node controller hasn't registered any "ready" nodes:
+  `failed to build load-balancer request: no ready nodes available for load balancer`
+- Net effect: CCM Deployment runs and looks healthy, but does nothing useful. `EXTERNAL-IP` on the ingress-nginx Service stays `<pending>` forever.
+
+**The correct knob is RKE2's `cloud-provider-name: external`** in the server + agent config (not the kubelet-arg). When that's set:
+
+- RKE2 declines to set its own providerID.
+- The kubelet then taints the node with `node.cloudprovider.kubernetes.io/uninitialized` (because no cloud-provider has initialized it).
+- DO CCM sees the taint, fetches DO API metadata for the node, sets `providerID=digitalocean://<droplet-id>`, populates `topology.kubernetes.io/{region,zone}` labels, and removes the taint.
+- The service-LB controller now has "ready" nodes and can build the LB.
+
+**Because providerID is immutable**, this knob has to be set **before the cluster's first node-join**. Adding it to an existing cluster requires either:
+- **Full cluster rebuild** (`make destroy` + `make apply` + `make play` with the new config) — clean, safe, ~10 minutes total.
+- **Per-node delete-and-rejoin** (`kubectl delete node <name>` + `systemctl restart rke2-{server,agent}` per node) — risky; rolling restart across the control plane can race etcd quorum loss.
+
+This change selects the full-cluster-rebuild path.
+
+These three findings (Helm vs YAML, kubelet flag, RKE2 config knob) drive the design — see "What this change ships" + the Sequencing note below.
 
 ## Security: this is a deliberate new public surface
 
@@ -46,10 +71,9 @@ The decision recorded in this change: **public HTTP/HTTPS ingress is acceptable 
   - `kustomization.yaml`: Kustomize entry listing `ccm.yaml` + `secrets.yaml`. No HelmRelease.
   - `secrets.yaml`: SOPS-encrypted `Secret/digitalocean.access-token` in `kube-system` namespace (matches what the upstream manifest expects). **Reuses the existing full-access DO PAT** that Tofu, external-dns, and cert-manager already share. Production-phase TODO in design.md about splitting into a least-privilege CCM-only token.
   - No `namespace.yaml` — the upstream manifest pins `kube-system`, which already exists; creating it would be a no-op.
-- **New Ansible role `cloud_provider_external`** (or a one-line addition to `rke2_common` — design.md picks one):
-  - Adds `kubelet-arg: ["cloud-provider=external"]` to `/etc/rancher/rke2/config.yaml` on every node, both server and agent templates.
-  - Triggers a controlled `systemctl restart rke2-server` / `rke2-agent` on apply via existing handlers.
-  - Idempotent across re-runs.
+- **RKE2 server + agent config**: render `cloud-provider-name: external` into `/etc/rancher/rke2/config.yaml` on every node. The existing `rke2_kubelet_args` knob (added in PR #30, value `["cloud-provider=external"]`) stays — both are needed: `cloud-provider-name` tells RKE2 not to set its own providerID, and the kubelet flag tells kubelet to expect an external cloud provider.
+  - Two-line change to each of `ansible/roles/rke2_server/templates/config.yaml.j2` and `ansible/roles/rke2_agent/templates/config.yaml.j2`.
+  - Existing rke2 service-restart handlers trigger automatically on config change. (On the **first** bring-up of the cluster, this means nothing — the service is starting fresh with the config. On an existing-cluster apply, this means restart-without-clearing-providerID, which is why this change explicitly requires a `make destroy` first.)
 - **`apps/ingress-nginx/values.yaml` updates**: replace the vestigial `service.beta.kubernetes.io/aws-load-balancer-type: nlb` annotation (inherited from the upstream template's AWS-default posture) with DO-specific annotations:
   - `service.beta.kubernetes.io/do-loadbalancer-name`: predictable name in DO UI (e.g. `do-nyc3-rke2-demo-ingress`)
   - `service.beta.kubernetes.io/do-loadbalancer-size-unit`: `1` (smallest, ~$12/mo)
@@ -73,7 +97,8 @@ The decision recorded in this change: **public HTTP/HTTPS ingress is acceptable 
 
 1. **Vendor upstream YAML; do not write a Helm wrapper.** The CCM manifest is small, self-contained, and only changes when DO cuts a release (every few months). A Helm wrapper would be a maintenance overhead with no upside. Pinning is a literal copy of `releases/digitalocean-cloud-controller-manager/v<version>.yml`; upgrade = re-copy.
 2. **Pin to `v0.1.67`** at PR time (latest as of 2026-05-16, verified against the upstream GitHub releases). RKE2 v1.35 compatibility per the CCM getting-started's "Use CCM versions >= v0.1.8 if you're running Kubernetes version >= v1.11" — we're well within range.
-3. **Set `--cloud-provider=external` on every kubelet** via the existing RKE2 `config.yaml` (`kubelet-arg: ["cloud-provider=external"]`). This is the CCM-supported pattern; running without it works partially but is unsupported and degrades node-side features (no providerID injection, no zone labels).
+3. **Set BOTH `cloud-provider-name: external` (RKE2-level) AND `kubelet-arg: ["cloud-provider=external"]` (kubelet-level)** in RKE2's `config.yaml` on every node. The RKE2-level knob is the load-bearing one — it stops RKE2 from setting a `rke2://<name>` providerID at first node-join, which would otherwise be immutable and block CCM from setting `digitalocean://<id>` (test #2 finding). The kubelet-level flag is documented in the upstream CCM getting-started.
+3a. **Cluster must be rebuilt (`make destroy` + fresh `make apply`/`make play`) on first install of this change.** The providerID-immutability constraint means an existing cluster with `rke2://` providerIDs cannot be migrated in-place without per-node delete-and-rejoin (rejected for risk to etcd quorum during rolling CP restart).
 4. **Reuse the existing `digitalocean-dns` PAT, do not split.** Same full-access scope used by Tofu/external-dns/cert-manager. Simpler secret inventory, matches the current pattern. Production-phase TODO documented in design.md.
 5. **`tcp` protocol on the DO LB, not `http`/`https`.** Passthrough so ingress-nginx terminates TLS with cert-manager-issued certs. The `http`/`https` LB modes would terminate at the LB using DO's certs — incompatible with the cert-manager flow already in place.
 6. **`do-loadbalancer-disable-lets-encrypt-dns-records: true`** so DO doesn't create its own LE-integration DNS records that race external-dns. Cert + DNS are both ours.
@@ -98,14 +123,17 @@ The decision recorded in this change: **public HTTP/HTTPS ingress is acceptable 
 
 Cluster currently destroyed. Two-group split mirroring `enable-longhorn`:
 
-- **Pre-bring-up (no cluster needed):** vendor the CCM YAML, encrypt the Secret with our age recipients, add the Ansible kubelet-flag role/edit, swap ingress-nginx annotations, edit deploy.sh, write runbook + diagram — all in one PR before any cluster work.
-- **At-bring-up (cluster on):**
-  1. `make apply` (Tofu, unchanged).
-  2. `make play` (now includes the kubelet flag → every node comes up with `node.cloudprovider.kubernetes.io/uninitialized` taint).
-  3. `./deploy.sh` — Flux brings up CCM first (it tolerates the taint), CCM initializes every node and removes the taint, then the rest of the apps schedule normally.
-  4. Validate per success criteria.
+- **Pre-bring-up (no cluster needed):** add `cloud-provider-name: external` to both rke2 server + agent templates; re-enable the CCM Flux Kustomization in `flux/flux-system/kustomization.yaml.resources` and `deploy.sh`'s rke2 `app_list`; re-remove `disableWait` from `apps/ingress-nginx/release.yaml` (these last three were backed out by PR #31). The CCM vendored manifest + Secret + per-app Flux Kustomization + Ansible kubelet flag + docs are already in main from PR #30; this revision just adds the missing piece + re-enables the wiring.
+- **At-bring-up (cluster on, fresh cluster):**
+  1. `make -C terraform destroy` (if a pre-#30 cluster exists with `rke2://` providerIDs). VPC stays per PR #29.
+  2. `make -C terraform apply` (Tofu, unchanged).
+  3. `make -C ansible play` — every node comes up with **both** the kubelet flag AND `cloud-provider-name=external`. Result: providerID empty, kubelet taints node with `node.cloudprovider.kubernetes.io/uninitialized`, general workloads cannot schedule until CCM lands.
+  4. `./deploy.sh` — Flux brings up CCM first (it tolerates the taint). CCM initializes every node (sets `providerID=digitalocean://<id>`, populates zone labels, removes the taint). Other apps then schedule normally.
+  5. Validate per success criteria.
 
-**Bring-up failure mode to watch for**: if CCM Kustomization fails to apply (e.g. SOPS decryption error on its Secret), every other workload sits Pending forever because no node can host non-tolerating pods. The runbook covers triage: confirm CCM logs, confirm Secret decryption, confirm DO API reachability.
+**Bring-up failure mode to watch for**: if CCM Kustomization fails to apply (e.g. SOPS decryption error on its Secret) OR if CCM can't reach the DO API, every other workload sits `Pending` forever because no node can host non-tolerating pods. The runbook covers triage: confirm CCM logs, confirm Secret decryption, confirm DO API reachability. (Test #2 demonstrated this exact failure mode — see runbook's "Triage if the cluster gets wedged in `Pending`" section.)
+
+**Bring-up failure mode CONFIRMED in test #2**: if `cloud-provider-name=external` is missing (the v2 mistake), CCM Deployment reaches Ready but does nothing useful. EXTERNAL-IP stays `<pending>`; CCM logs show `provider ID "rke2://..." is missing prefix "digitalocean://"`. Recovery from this state is `make destroy` (because providerID is immutable). Don't ship without v3's RKE2 config knob.
 
 Cluster work for this change can ride alongside the next `enable-longhorn` Group 2 bring-up, or stand alone.
 
