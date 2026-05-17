@@ -283,13 +283,24 @@ fi
 # from a prior unsuspended reconcile cycle.
 sops -d flux/flux-system/sops-age.secrets.yaml | kubectl apply -f -
 
+# Refresh the source artifact BEFORE resuming. The source-controller is
+# not suspended (only the Kustomization is), so this works while we are
+# still paused. Without this, the first post-resume reconcile uses
+# whatever stale revision was in the source artifact when we suspended --
+# typically the bootstrap commit -- which doesn't have the decryption
+# block in gotk-sync.yaml. Applying that stale tree strips the
+# kubectl-apply spec update above and the next reconcile reverts to the
+# no-decryption path, where sops-age.secrets.yaml gets applied as
+# ciphertext and the cluster wedges with "unknown identity type". See
+# issue #49.
+flux reconcile source git flux-system
+
 if $suspended_flux_system; then
   flux resume kustomization flux-system
 fi
 
-# Force-reconcile so the Kustomization picks up both halves immediately
-# instead of waiting for the 10-minute retry interval.
-flux reconcile source git flux-system
+# Bring forward the next Kustomization reconcile so we don't wait the full
+# 10-minute retry interval.
 flux reconcile kustomization flux-system
 
 # Open the Flux floodgates! Enable everything!
