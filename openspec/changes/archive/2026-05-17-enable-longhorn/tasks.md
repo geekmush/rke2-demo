@@ -124,6 +124,35 @@ Pre-flight: all install-do-ccm-era fixes are landed on main as of 2026-05-17. No
 - [ ] 32. `make -C terraform destroy` — `Resources: 16 destroyed`, exit 0, VPC retained (per #29).
 - [ ] 33. Close tracking issue. Comment with verification command outputs.
 
+## Validation closeout (2026-05-17)
+
+Group 1 merged PR #59 (4 commits). Group 2 cluster validation surfaced 3 discrepancies that landed as hotfix commits on `main` ahead of archive:
+
+| Discovery | Root cause | Fix |
+|---|---|---|
+| `longhorn_disk_prep` failed at `wait for kubectl` — binary not found | The role tried to use the worker-local kubectl (which doesn't exist until `rke2_agent` installs RKE2). Original "self-gating retry" design assumed the binary would appear during the role's retry window, but the entire role runs BEFORE `rke2_agent`. | Split into two roles around the `rke2_agent` boundary: `longhorn_disk_prep` (mkfs+mount, before) + `longhorn_node_register` (label+annotate, after). All kubectl operations delegate to the bootstrap CP (`groups['rke2_servers'][0]`) since RKE2 agent nodes don't have a cluster-admin kubeconfig. Commit `29d3464`. |
+| `deploy.sh` sed-replaced `project1-dev` in `docs/TROUBLESHOOTING.md` | PR #27's `--exclude-dir=archive --exclude-dir=openspec` didn't cover docs at `docs/` level that legitimately mention the placeholder string. TROUBLESHOOTING.md has a section *about* the project1-dev clobber bug — and got clobbered by it. | Revert (`e7978ac`) + add `--exclude TROUBLESHOOTING.md` to the grep (`bf31dd8`). |
+| Gate 3b: 6 Longhorn Node CRs instead of expected 3 (CPs included) | Chart's default `longhornManager.tolerations: []` + DaemonSet default tolerations land the manager on every node. CPs registered as Longhorn Nodes despite having zero disks (hard-isolation at the disk level held via `createDefaultDiskLabeledNodes` + workers-only opt-in label). | Set `longhornManager.nodeSelector: {node.longhorn.io/create-default-disk: config}` in `apps/longhorn/values.yaml`. Commit `d95f5cc`. |
+
+### Acceptance gates — final live-cluster results
+
+| Gate | Result |
+|---|---|
+| 3a — exactly one disk path: `/var/lib/longhorn` | ✅ PASS |
+| 3b — 3 Longhorn Node CRs (workers only, after hotfix `d95f5cc`) | ✅ PASS |
+| 3c — disk capacity ~50 GiB (actual: 48 GiB after ext4 overhead) | ✅ PASS |
+| 3d — UUID mount with `nofail,noatime`, mode `700 root:root` | ✅ PASS on all 3 workers |
+| 5 — PVC binds (~6s), 3-way HARD anti-affinity | ✅ PASS |
+| 6 — pod reschedule survival, data integrity | ✅ PASS |
+| Worker-drop recovery — Degraded → Healthy via uncordon, no data loss | ✅ PASS (writer wrote 103 lines uninterrupted, replica rebuilt ~30s after uncordon) |
+| Tear-down — Volume reclaimed within 30s | ✅ PASS |
+
+### Deferred to future proposals (unchanged from v2)
+
+- Encryption-at-rest StorageClass with operator-managed keys (separate change).
+- S3 backup target / Longhorn → DO Spaces (separate change).
+- Longhorn V2 data engine when GA + workload demand exists.
+
 ## Archive
 
-- [ ] 34. `git mv openspec/changes/enable-longhorn openspec/changes/archive/<YYYY-MM-DD>-enable-longhorn`. Commit `docs(openspec): archive enable-longhorn`.
+- [x] 34. `git mv openspec/changes/enable-longhorn openspec/changes/archive/2026-05-17-enable-longhorn`. Commit `docs(openspec): archive enable-longhorn`.
