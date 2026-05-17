@@ -1,0 +1,49 @@
+---
+# longhorn_node_register -- after rke2-agent is up, label + annotate
+# this worker so Longhorn opts in to creating a default disk at
+# /var/lib/longhorn (and nowhere else). Companion to longhorn_disk_prep,
+# which mkfs's + mounts the underlying volume.
+#
+# All kubectl operations delegate to the bootstrap CP: RKE2 agent
+# nodes don't have a cluster-admin kubeconfig (only servers do, at
+# /etc/rancher/rke2/rke2.yaml). The CP labels the worker Node by name
+# -- `inventory_hostname` continues to refer to the original target
+# (the worker) under delegate_to.
+
+- name: wait for this worker to be registered as a Node by rke2-agent
+  ansible.builtin.command:
+    cmd: "/var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get node {{ inventory_hostname }} -o name"
+  delegate_to: "{{ groups['rke2_servers'][0] }}"
+  register: longhorn_node_register_node_probe
+  retries: 30
+  delay: 5
+  until: longhorn_node_register_node_probe.rc == 0
+  changed_when: false
+
+- name: label this worker for Longhorn default-disk opt-in
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml
+      label node {{ inventory_hostname }}
+      node.longhorn.io/create-default-disk=config --overwrite
+  delegate_to: "{{ groups['rke2_servers'][0] }}"
+  register: longhorn_node_register_label
+  changed_when: "'not labeled' not in longhorn_node_register_label.stderr"
+
+- name: annotate this worker with Longhorn default-disks-config
+  # The JSON in the annotation value is what Longhorn parses as the
+  # per-node disk spec. Pinning path / allowScheduling / storageReserved
+  # / tags belt-and-suspenders alongside the chart's defaultSettings
+  # (which apply to disks NOT spec'd here).
+  ansible.builtin.command:
+    cmd: >-
+      /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml
+      annotate node {{ inventory_hostname }}
+      node.longhorn.io/default-disks-config={{ longhorn_node_register_disks_config_json | quote }}
+      --overwrite
+  vars:
+    longhorn_node_register_disks_config_json: >-
+      [{"path":"{{ longhorn_mount_path }}","allowScheduling":true,"storageReserved":0,"tags":["dedicated"]}]
+  delegate_to: "{{ groups['rke2_servers'][0] }}"
+  register: longhorn_node_register_annotate
+  changed_when: "'not annotated' not in longhorn_node_register_annotate.stderr"

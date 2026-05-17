@@ -1,8 +1,9 @@
 # Ansible role: `longhorn_disk_prep`
 
 Prepares a dedicated raw block device on a worker node for Longhorn
-consumption, then labels + annotates the node so Longhorn opts to use
-that disk (and NOTHING else).
+consumption (mkfs + UUID-mount at `/var/lib/longhorn`). The companion
+role `longhorn_node_register` runs AFTER `rke2_agent` to apply the
+Longhorn opt-in label + default-disks-config annotation.
 
 ## Inputs
 
@@ -25,19 +26,16 @@ In order:
 3. **mkfs.ext4** (or whatever `longhorn_filesystem` is) only if no FS
    present. `force: false` so we never wipe accidentally.
 4. **Mount via UUID** at `/var/lib/longhorn`. Persists in `/etc/fstab`
-   with `nofail` -- a missing volume produces a degraded but bootable
-   worker rather than blocking boot entirely.
+   with `nofail,noatime` -- a missing volume produces a degraded but
+   bootable worker rather than blocking boot entirely.
 5. **`chmod 0700 root:root`** on the mount point. Longhorn runs
    privileged anyway; tighter perms reduce blast radius.
-6. **Label the node** `node.longhorn.io/create-default-disk=config`.
-   Gated on rke2-agent having registered the node first (so kubectl
-   can find it). Workers-only -- this is what makes
-   `createDefaultDiskLabeledNodes: true` in the chart values map to
-   "use this node."
-7. **Annotate the node** `node.longhorn.io/default-disks-config=...`
-   with a JSON spec telling Longhorn exactly which path to use, with
-   what tags and reservations. Spec:
-   `[{"path":"/var/lib/longhorn","allowScheduling":true,"storageReserved":0,"tags":["dedicated"]}]`.
+
+Node-side opt-in (label + default-disks-config annotation) is handled
+by [`longhorn_node_register`](../longhorn_node_register/README.md),
+which must run AFTER `rke2_agent` because it needs
+`/var/lib/rancher/rke2/bin/kubectl` -- a binary that doesn't exist
+until rke2-agent has been installed.
 
 ## Why UUID-based mount, not the by-id path?
 
@@ -53,19 +51,17 @@ line.
 
 ## Playbook placement
 
-Workers-only. Must run BEFORE `rke2_agent` for tasks 1-5 (mkfs +
-mount) so the mount point is ready when the kubelet starts. Tasks 6-7
-(label + annotate) gate themselves on rke2-agent being up, so they
-naturally land after `rke2_agent` even within the same role
-invocation -- the role's task ordering handles this internally.
+Workers-only. Must run BEFORE `rke2_agent` so the mount point is ready
+when the kubelet starts.
 
 ```yaml
 # ansible/playbooks/site.yml (snippet)
 - name: RKE2 agent (workers)
   hosts: rke2_agents
   roles:
-    - longhorn_disk_prep   # NEW
-    - rke2_agent
+    - longhorn_disk_prep        # disk: mkfs + mount    (BEFORE rke2_agent)
+    - rke2_agent                # cluster: install + start
+    - longhorn_node_register    # node: label + annotate (AFTER rke2_agent)
 ```
 
 ## Idempotency
@@ -74,8 +70,6 @@ invocation -- the role's task ordering handles this internally.
 - Task 4 (mount): no-op if already mounted at the desired path with
   matching options.
 - Task 5 (chmod): no-op if perms already 0700.
-- Tasks 6-7 (kubectl label/annotate): use `--overwrite`, so
-  re-applying the same value is a no-op.
 
 Second `make play` after a clean first one reports `changed=0`.
 
@@ -85,9 +79,6 @@ Second `make play` after a clean first one reports `changed=0`.
   message about inventory.
 - Device exists but has wrong filesystem type -> task 2 fails. Operator
   must `wipefs` (or rebuild the volume from Tofu) before re-running.
-- rke2-agent never registers the node -> tasks 6-7 hit their retry
-  timeout. Usually means the upstream `rke2_agent` role itself failed
-  and the play is already bailing.
 
 ## Bare-metal portability
 

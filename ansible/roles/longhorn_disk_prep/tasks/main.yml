@@ -87,46 +87,7 @@
     opts: defaults,nofail,noatime
     state: mounted
 
-# --- Tasks below talk to the kube API. They gate themselves on
-# rke2-agent having registered the node, so they're safe to run as part
-# of the same role invocation -- even though they conceptually belong
-# "after rke2_agent." Keeping them inside this role keeps the per-worker
-# Longhorn substrate setup as one logical unit.
-
-- name: wait for this worker to be registered as a Node by rke2-agent
-  ansible.builtin.command:
-    cmd: "/var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get node {{ inventory_hostname }} -o name"
-  register: longhorn_disk_prep_node_probe
-  retries: 30
-  delay: 5
-  until: longhorn_disk_prep_node_probe.rc == 0
-  changed_when: false
-  # rke2-agent's kubeconfig lives at /etc/rancher/rke2/rke2.yaml on the
-  # agent host AFTER rke2-agent has fully started. The wait + retry is
-  # how we phase this task without splitting the role.
-
-- name: label this worker for Longhorn default-disk opt-in
-  ansible.builtin.command:
-    cmd: >-
-      /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml
-      label node {{ inventory_hostname }}
-      node.longhorn.io/create-default-disk=config --overwrite
-  register: longhorn_disk_prep_label
-  changed_when: "'not labeled' not in longhorn_disk_prep_label.stderr"
-
-- name: annotate this worker with Longhorn default-disks-config
-  # The JSON in the annotation value is what Longhorn parses as the
-  # per-node disk spec. Pinning path / allowScheduling / storageReserved
-  # / tags belt-and-suspenders alongside the chart's defaultSettings
-  # (which apply to disks NOT spec'd here).
-  ansible.builtin.command:
-    cmd: >-
-      /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml
-      annotate node {{ inventory_hostname }}
-      node.longhorn.io/default-disks-config={{ longhorn_disk_prep_disks_config_json | quote }}
-      --overwrite
-  vars:
-    longhorn_disk_prep_disks_config_json: >-
-      [{"path":"{{ longhorn_mount_path }}","allowScheduling":true,"storageReserved":0,"tags":["dedicated"]}]
-  register: longhorn_disk_prep_annotate
-  changed_when: "'not annotated' not in longhorn_disk_prep_annotate.stderr"
+# Node-side opt-in (Longhorn label + default-disks-config annotation) is
+# done by the companion role `longhorn_node_register` AFTER rke2_agent,
+# because /var/lib/rancher/rke2/bin/kubectl doesn't exist until
+# rke2-agent has been installed and started.

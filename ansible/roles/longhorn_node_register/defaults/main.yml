@@ -1,0 +1,4 @@
+---
+# Path Longhorn's default-disk spec points at. Must match
+# longhorn_mount_path used by longhorn_disk_prep on the same host.
+longhorn_mount_path: /var/lib/longhorn

@@ -19,16 +19,22 @@
 
 - name: RKE2 agent (workers)
   hosts: rke2_agents
-  # gather_facts true on workers so longhorn_disk_prep can use
+  # gather_facts true on workers so the Longhorn roles can use
   # `inventory_hostname` for kubectl node-label/annotate. (Cheap on the
   # 3 workers; the server play above stays gather_facts:false to keep
   # serial:1 bring-up snappy.)
   gather_facts: true
   roles:
-    # longhorn_disk_prep mkfs's + mounts the dedicated DO Block Storage
-    # volume at /var/lib/longhorn BEFORE rke2_agent starts, then labels
-    # + annotates the node for Longhorn's opt-in default-disk pattern
-    # AFTER rke2_agent has registered the node (gating inside the role).
-    # See ansible/roles/longhorn_disk_prep/README.md.
+    # 1. longhorn_disk_prep mkfs's + mounts the dedicated DO Block
+    #    Storage volume at /var/lib/longhorn. Runs BEFORE rke2_agent.
+    # 2. rke2_agent installs + starts the agent (which creates
+    #    /var/lib/rancher/rke2/bin/kubectl and registers the Node).
+    # 3. longhorn_node_register labels + annotates the registered Node
+    #    so Longhorn opts in to creating a default disk at
+    #    /var/lib/longhorn (and nowhere else). Runs AFTER rke2_agent
+    #    because it requires the worker-local kubectl binary.
+    # See ansible/roles/longhorn_disk_prep/README.md and
+    # ansible/roles/longhorn_node_register/README.md.
     - longhorn_disk_prep
     - rke2_agent
+    - longhorn_node_register
