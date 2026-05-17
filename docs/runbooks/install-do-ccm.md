@@ -201,6 +201,49 @@ After (1+2), the DO LB attached to the ingress-nginx Service is destroyed by CCM
 
 After (3), kubelets restart without the `external` flag; nodes come up untainted; CCM doesn't run. ingress-nginx Service Type=LoadBalancer goes back to `EXTERNAL-IP <pending>` (no controller to provision it).
 
+## Migration: switching LB type (REGIONAL_NETWORK → REGIONAL)
+
+If a cluster came up before PR #38 landed `service.beta.kubernetes.io/do-loadbalancer-type: REGIONAL` in [`apps/ingress-nginx/values.yaml`](../../apps/ingress-nginx/values.yaml), CCM's then-current default of `REGIONAL_NETWORK` provisioned a DO Network Load Balancer instead of a classic Load Balancer. REGIONAL_NETWORK LBs are reachable only from within DO's network, not the public internet — see test #3 / test #4 summary in conversation transcripts + [issue #35](https://github.com/geekmush/do-nyc3-rke2-demo/issues/35).
+
+The annotation change alone doesn't migrate an existing LB. Three things conspire:
+
+1. **The DO API doesn't support changing `type` on an existing LB.** You have to delete + recreate.
+2. **CCM treats `do-loadbalancer-type` as a managed default** and snaps it back to `REGIONAL_NETWORK` if you patch the live Service annotation directly (CCM's reconcile re-asserts the type matching the LB's actual type, not the Service's desired annotation).
+3. **`flux reconcile helmrelease` is a no-op** because Helm doesn't track per-field drift on Service annotations — once the chart is installed, Flux thinks ingress-nginx is in-sync regardless of out-of-band Service edits.
+
+The reliable recipe is to fully recreate the HelmRelease, which triggers Helm to recreate the Service with the values.yaml-defined annotation, which triggers CCM to provision a fresh LB with the desired type:
+
+```bash
+# Delete the HelmRelease. Flux's ingress-nginx Kustomization will
+# recreate it on next reconcile (within ~1 min, faster with explicit
+# reconcile below). The existing DO LB stays orphaned until CCM tears
+# it down with the old Service.
+kubectl delete helmrelease -n ingress-nginx ingress-nginx
+
+# Force-reconcile ingress-nginx Kustomization to recreate immediately.
+flux reconcile kustomization ingress-nginx --with-source
+
+# Watch for the new LB:
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  sleep 10
+  ann=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+    -o jsonpath='{.metadata.annotations.service\.beta\.kubernetes\.io/do-loadbalancer-type}' 2>/dev/null)
+  ip=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+    -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+  echo "t+$((i*10))s annotation=$ann IP=$ip"
+  [[ "$ann" == "REGIONAL" && -n "$ip" ]] && { timeout 3 bash -c "</dev/tcp/$ip/443" 2>/dev/null && echo "=== REGIONAL LB up + reachable ==="; break; }
+done
+```
+
+Typical wall time: 60-120 s. During the swap there's a brief outage on the LB IP (old LB tearing down, new LB warming up).
+
+**Side effects to plan for:**
+- **LB IP changes.** Any DNS records pointing at the old IP need updating. external-dns handles this automatically for Ingress-managed records, but its diff logic has the orphan-TXT bug (#44) — if A records don't update, see the orphan-TXT workaround section above.
+- **Brief connection reset window.** Existing inbound HTTP/HTTPS connections close. Outbound from-cluster traffic unaffected.
+- **The old LB lingers ~30 s** between Service-delete and CCM-tears-down. DO bills per-hour minimum on LBs, so a swap costs ~$0.018 of LB-hours.
+
+If a cluster is being newly stood up post-#38, none of this applies — the first LB CCM provisions already has type `REGIONAL`. This section is for upgrade migration only.
+
 ## Cost
 
 | Item | Cost (NYC3) |
