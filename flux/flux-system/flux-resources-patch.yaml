@@ -1,3 +1,19 @@
+# All six Flux controllers need to tolerate the
+# `node.cloudprovider.kubernetes.io/uninitialized` taint so they can schedule
+# during the bring-up window between `make play` and the CCM Deployment
+# untainting nodes. Without this toleration, the controllers sit Pending
+# forever (CCM's Kustomization can't be applied because kustomize-controller
+# is Pending; nothing untaints; deadlock). See issue #36.
+#
+# CCM itself tolerates this taint (built into its upstream manifest) so it
+# lands on whatever node Kubernetes picks despite the cluster-wide taint.
+# Once CCM initializes each node, it removes the taint and this toleration
+# becomes inert.
+#
+# operator=Exists matches the taint regardless of value; safer than
+# pinning value="true" since the controller can set value=true OR value=false
+# depending on internal state transitions.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,6 +22,10 @@ metadata:
 spec:
   template:
     spec:
+      tolerations:
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: manager
           resources:
@@ -23,6 +43,10 @@ metadata:
 spec:
   template:
     spec:
+      tolerations:
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: manager
           resources:
@@ -40,6 +64,10 @@ metadata:
 spec:
   template:
     spec:
+      tolerations:
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: manager
           resources:
@@ -57,6 +85,10 @@ metadata:
 spec:
   template:
     spec:
+      tolerations:
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: manager
           resources:
@@ -74,6 +106,10 @@ metadata:
 spec:
   template:
     spec:
+      tolerations:
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: manager
           resources:
@@ -91,6 +127,10 @@ metadata:
 spec:
   template:
     spec:
+      tolerations:
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: manager
           resources:
