@@ -53,3 +53,51 @@ spec:
       #       - kind: Gateway
       #         name: eg
       #         namespace: envoy-gateway-system
+
+# Staging Let's Encrypt. Same shape as `letsencrypt` above, but points at the
+# staging ACME endpoint. Use it for repeated test/canary runs that would
+# otherwise burn LE production's 5-certs-per-identifier-per-week quota --
+# tests #2..#7 (2026-05-17) cumulatively exhausted that quota for
+# canary.escapekey.org, blocking validation for ~10 hours until the window
+# rolled. Staging has effectively unlimited quotas.
+#
+# Switching an Ingress to staging is one annotation flip:
+#   cert-manager.io/cluster-issuer: letsencrypt-staging   # was: letsencrypt
+#
+# Caveat: staging certs are signed by "Fake LE Intermediate" -- NOT a public
+# trust root, so browsers + `curl` (without -k) reject them. Use staging for
+# the cert-issuance smoke test (cert-manager exercises end-to-end identically
+# to prod), then switch back to `letsencrypt` for any cert that needs real
+# trust. See issue #52.
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    email: hostmaster@escapekey.org
+
+    # Same profile as prod for behavioural parity.
+    profile: tlsserver
+
+    # Let's Encrypt's STAGING server. Issues certs from "Fake LE Intermediate"
+    # -- not browser-trusted, but rate limits are effectively unlimited.
+    # https://letsencrypt.org/docs/staging-environment/
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+
+    # Distinct private-key Secret so staging + prod don't clobber each other.
+    privateKeySecretRef:
+      name: tls-staging.key
+
+    # Same solvers as prod -- DNS-01 primary via DigitalOcean, HTTP-01
+    # fallback via ingress-nginx. Reuses the same digitalocean-dns Secret.
+    solvers:
+      - dns01:
+          digitalocean:
+            tokenSecretRef:
+              name: digitalocean-dns
+              key: access-token
+      - http01:
+          ingress:
+            ingressClassName: nginx
