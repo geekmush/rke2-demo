@@ -1,7 +1,12 @@
 persistence:
 
-  # Setting this to false, because we want to use the longhorn-crypto-global encrypted storageclass as the default.
-  defaultClass: false
+  # The plain `longhorn` StorageClass is our default. The encrypted
+  # `longhorn-crypto-global` SC the upstream template shipped was deleted
+  # in the enable-longhorn proposal v2 cleanup (its required Secret was
+  # SOPS-encrypted with an upstream key we can't decrypt). Encryption-at-
+  # rest is deferred to a separate future change with explicit
+  # key-management design.
+  defaultClass: true
 
   # -- Replica count of the default Longhorn StorageClass.
   defaultClassReplicaCount: 3
@@ -69,24 +74,54 @@ csi:
 defaultSettings:
   # -- Setting that allows Longhorn to automatically attach a volume and create snapshots or backups when recurring jobs are run.
   allowRecurringJobWhileVolumeDetached: ~
-  # -- Setting that allows Longhorn to automatically create a default disk only on nodes with the label "node.longhorn.io/create-default-disk=true" (if no other disks exist). When this setting is disabled, Longhorn creates a default disk on each node that is added to the cluster.
-  createDefaultDiskLabeledNodes: ~
+  # -- HARD ISOLATION (enable-longhorn proposal v2 decision #5).
+  # Setting that allows Longhorn to automatically create a default disk only on nodes with the label "node.longhorn.io/create-default-disk=true" (if no other disks exist). When this setting is disabled, Longhorn creates a default disk on each node that is added to the cluster.
+  #
+  # We MUST keep this `true` so Longhorn never creates a disk on a node
+  # we didn't explicitly label. The Ansible role `longhorn_disk_prep`
+  # applies the matching label + `default-disks-config` annotation on
+  # workers only (after mounting the dedicated 50GB DO Block Storage
+  # volume at /var/lib/longhorn). Control-plane nodes never receive
+  # the label, so even if their NoSchedule taint is ever removed,
+  # Longhorn physically cannot place a disk on a CP's OS partition.
+  createDefaultDiskLabeledNodes: true
   # -- Default path to use for storing data on a host. An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine, while a path to a block device indicates a block-type disk used by the V2 Data Engine. The default value is "/var/lib/longhorn/".
-  defaultDataPath: ~
+  #
+  # Explicit (matches chart default) so the path is reviewable here
+  # without consulting upstream. Also matches the Ansible role's
+  # mount point exactly.
+  defaultDataPath: /var/lib/longhorn
   # -- Default data locality. A Longhorn volume has data locality if a local replica of the volume exists on the same node as the pod that is using the volume.
-  defaultDataLocality: ~
+  defaultDataLocality: disabled
   # -- Setting that allows scheduling on nodes with healthy replicas of the same volume. This setting is disabled by default.
-  replicaSoftAntiAffinity: ~
+  #
+  # `false` here means "do NOT soften anti-affinity" -- i.e. HARD
+  # anti-affinity. With 3 workers and 3-replica default, every PVC's
+  # replicas land on distinct workers (proposal v2 success criterion).
+  # Counter-intuitive naming, intentional Longhorn upstream convention.
+  replicaSoftAntiAffinity: false
   # -- Setting that automatically rebalances replicas when an available node is discovered.
   replicaAutoBalance: ~
   # -- Percentage of storage that can be allocated relative to hard drive capacity. The default value is "100".
   storageOverProvisioningPercentage: ~
   # -- Percentage of minimum available disk capacity. When the minimum available capacity exceeds the total available capacity, the disk becomes unschedulable until more space is made available for use. The default value is "25".
-  storageMinimalAvailablePercentage: ~
+  #
+  # Lower threshold from 25 -> 10 since the volume is DEDICATED to
+  # Longhorn (nothing else writes to it). Recovers more usable capacity
+  # without operationally risking out-of-space.
+  storageMinimalAvailablePercentage: 10
   # -- Percentage of disk space that is not allocated to the default disk on each new Longhorn node.
-  storageReservedPercentageForDefaultDisk: ~
+  #
+  # Zero because the disk is dedicated -- no other process should ever
+  # write to /var/lib/longhorn (Ansible mounted it specifically for
+  # Longhorn's use).
+  storageReservedPercentageForDefaultDisk: 0
   # -- Upgrade Checker that periodically checks for new Longhorn versions. When a new version is available, a notification appears on the Longhorn UI. This setting is enabled by default
-  upgradeChecker: ~
+  #
+  # GitOps-managed upgrades: the chart version pin in
+  # apps/longhorn/release.yaml is the source of truth. We don't want
+  # the in-band notifier nudging operators outside Flux's flow.
+  upgradeChecker: false
   # -- The Upgrade Responder sends a notification whenever a new Longhorn version that you can upgrade to becomes available. The default value is https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade.
   upgradeResponderURL: ~
   # -- Default number of replicas for volumes created using the Longhorn UI. For Kubernetes configuration, modify the `numberOfReplicas` field in the StorageClass. The default value is "{"v1":"3","v2":"3"}".

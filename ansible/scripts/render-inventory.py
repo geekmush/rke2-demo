@@ -10,11 +10,19 @@ Consumes stdin (or a file path argument) and prints inventory YAML to stdout.
 Stdlib only -- no PyYAML, hand-emitted YAML so we don't need a venv.
 
 Expected Tofu outputs (from terraform/environments/do-test/outputs.tf):
-  - cp_nodes      : list({ name, public_ip, private_ip, id })
-  - worker_nodes  : same shape
-  - cp_endpoint   : string (LB public IP)
-  - vpc_cidr      : string
-  - region        : string
+  - cp_nodes                : list({ name, public_ip, private_ip, id })
+  - worker_nodes            : same shape
+  - cp_endpoint             : string (LB public IP)
+  - vpc_cidr                : string
+  - region                  : string
+  - worker_longhorn_devices : map(string)  -- hostname -> stable /dev/disk/by-id path
+                              for the dedicated Longhorn volume per worker.
+                              Each per-worker entry becomes a `longhorn_device`
+                              host_var consumed by the `longhorn_disk_prep`
+                              Ansible role. Required for the enable-longhorn
+                              workflow; absent on pre-add-do-block-storage Tofu
+                              state, which makes longhorn_device unset and the
+                              role's first task `stat: <missing>` fail loudly.
 
 Output:
   all:
@@ -33,7 +41,13 @@ Output:
             node_role:    control-plane
           ...
       rke2_agents:
-        hosts: ...
+        hosts:
+          do-nyc3-rke2-demo-worker-01:
+            ansible_host:    <public_ip>
+            private_ip:      <private_ip>
+            node_role:       worker
+            longhorn_device: /dev/disk/by-id/scsi-0DO_Volume_<name>
+          ...
 """
 
 import argparse
@@ -41,13 +55,16 @@ import json
 import sys
 
 
-def emit_host_line(name: str, host: dict) -> list[str]:
-    return [
+def emit_host_line(name: str, host: dict, longhorn_device: str | None = None) -> list[str]:
+    lines = [
         f"        {name}:",
-        f"          ansible_host: {host['public_ip']}",
-        f"          private_ip:   {host['private_ip']}",
-        f"          node_role:    {host['node_role']}",
+        f"          ansible_host:    {host['public_ip']}",
+        f"          private_ip:      {host['private_ip']}",
+        f"          node_role:       {host['node_role']}",
     ]
+    if longhorn_device is not None:
+        lines.append(f"          longhorn_device: {longhorn_device}")
+    return lines
 
 
 def render(tofu: dict, ssh_key: str, ssh_user: str) -> str:
@@ -56,6 +73,14 @@ def render(tofu: dict, ssh_key: str, ssh_user: str) -> str:
     cp_endpoint = tofu["cp_endpoint"]["value"]
     vpc_cidr = tofu["vpc_cidr"]["value"]
     region = tofu["region"]["value"]
+
+    # `worker_longhorn_devices` is optional -- it appears in Tofu output only
+    # after the add-do-block-storage substrate work. Pre-substrate state has
+    # this key missing entirely (KeyError); we render workers without a
+    # longhorn_device host_var in that case, and the longhorn_disk_prep
+    # role will fail loudly via its first `stat` task. Cleaner failure
+    # than rendering an empty/wrong path.
+    worker_longhorn_devices = tofu.get("worker_longhorn_devices", {}).get("value", {})
 
     lines: list[str] = [
         "---",
@@ -82,7 +107,8 @@ def render(tofu: dict, ssh_key: str, ssh_user: str) -> str:
     ]
     for node in worker_nodes:
         node = dict(node, node_role="worker")
-        lines.extend(emit_host_line(node["name"], node))
+        lh_device = worker_longhorn_devices.get(node["name"])
+        lines.extend(emit_host_line(node["name"], node, lh_device))
 
     return "\n".join(lines) + "\n"
 

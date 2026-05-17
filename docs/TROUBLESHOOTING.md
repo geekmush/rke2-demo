@@ -70,6 +70,13 @@ Where each stage *should* succeed:
 | `make destroy` succeeds but tee masks the actual exit code | [Pipefail](#pipefail) |
 | coredns Pending → Flux source-controller can't resolve github.com | [coredns Pending](#coredns-pending) |
 | `kubectl apply -k apps/<X>/` errors on SOPS-wrapped Secret | [kubectl can't decrypt SOPS](#kubectl-cant-decrypt-sops) |
+| Longhorn Node CR shows disk path other than `/var/lib/longhorn` | [Longhorn disk isolation broken](#longhorn-disk-isolation-broken) |
+| Longhorn shows 6 Node CRs (CPs included) instead of 3 | [Longhorn on CPs](#longhorn-on-cps) |
+| PVC stuck Pending on `storageClassName: longhorn` | [PVC Pending — no schedulable replica](#pvc-pending--no-schedulable-replica) |
+| `longhorn_disk_prep` Ansible role fails: device missing | [longhorn_disk_prep: device missing](#longhorn_disk_prep-device-missing) |
+| `longhorn_disk_prep` refuses to wipe an existing filesystem | [longhorn_disk_prep: non-matching filesystem](#longhorn_disk_prep-non-matching-filesystem) |
+| Worker won't boot after Longhorn enabled — fstab failure | [Worker boot blocked by Longhorn mount](#worker-boot-blocked-by-longhorn-mount) |
+| `longhorn-crypto-global` StorageClass missing (expected from upstream template) | [Encrypted SC removed](#encrypted-sc-removed) |
 
 ---
 
@@ -493,6 +500,184 @@ Same pattern is used for Canal/Flannel VPC interface binding (`rke2-canal-config
 
 ---
 
+## Longhorn
+
+The hard guarantee for this cluster: Longhorn touches ONLY `/var/lib/longhorn` on workers. Enforced by `createDefaultDiskLabeledNodes: true` plus the per-node `node.longhorn.io/create-default-disk=config` label + `node.longhorn.io/default-disks-config` annotation applied by `ansible/roles/longhorn_disk_prep/`. Every troubleshooting decision below preserves that guarantee — never relax it by hand-creating a Longhorn disk on an unlabeled path.
+
+### Longhorn disk isolation broken
+
+```bash
+kubectl -n longhorn-system get nodes.longhorn.io -o json \
+  | jq -r '.items[].spec.disks | to_entries[] | .value.path' | sort -u
+# Expected: exactly one line: /var/lib/longhorn
+# Bad: any other path (/, /var/lib, /mnt/something, etc.)
+```
+
+**Root cause** (most likely):
+1. `defaultSettings.createDefaultDiskLabeledNodes: true` got flipped to `false` in `apps/longhorn/values.yaml`. Without that, Longhorn auto-creates a default disk **on every node it runs on**, using `defaultDataPath` against the node's root filesystem.
+2. A node was manually annotated with a different `default-disks-config` path.
+3. Operator created a Longhorn disk through the UI on the root filesystem.
+
+**Fix**:
+```bash
+# 1. Confirm the chart-level setting:
+kubectl -n longhorn-system get configmap longhorn-default-setting -o yaml | grep -i createDefault
+# Expect: create-default-disk-labeled-nodes: "true"
+
+# 2. Find which Node has the bad path and inspect its annotation:
+kubectl get nodes -o json \
+  | jq -r '.items[] | "\(.metadata.name): \(.metadata.annotations."node.longhorn.io/default-disks-config" // "<none>")"'
+
+# 3. Delete the offending Longhorn disk from the Node spec (UI or kubectl edit nodes.longhorn.io <node>).
+#    DO NOT delete the Node CR -- Longhorn rebuilds it from the annotation on next reconcile.
+# 4. Re-apply the Ansible role to overwrite the annotation:
+make -C ansible play  # idempotent; longhorn_disk_prep tasks re-annotate.
+```
+
+**Portability**: Hivelocity / bare-metal — same mechanism. The opt-in label is provider-agnostic. CPs get neither label nor annotation by Ansible design, so the guarantee holds regardless of substrate.
+
+### Longhorn on CPs
+
+```bash
+kubectl -n longhorn-system get nodes.longhorn.io
+# Expect 3 rows (workers).
+# Bad: 6 rows (workers + CPs).
+```
+
+**Root cause**: CPs' `node-role.kubernetes.io/control-plane:NoSchedule` taint was removed (e.g., for a single-node demo) **AND** someone labeled the CPs with `node.longhorn.io/create-default-disk=config`. The DaemonSet now schedules on CPs too. Even without the label they shouldn't auto-create a default disk (the chart's `createDefaultDiskLabeledNodes` gates that), but the manager pods would still run there and consume RAM next to etcd.
+
+**Fix**:
+```bash
+# 1. Re-taint CPs:
+kubectl taint nodes -l node-role.kubernetes.io/control-plane node-role.kubernetes.io/control-plane:NoSchedule --overwrite
+
+# 2. Remove the Longhorn label if present:
+kubectl label nodes -l node-role.kubernetes.io/control-plane node.longhorn.io/create-default-disk- --overwrite
+
+# 3. The DaemonSet evicts; the Node CRs disappear.
+```
+
+**Portability**: Bare metal — same. The CP-untaint anti-pattern shows up most often in single-node-demo configurations; the Ansible role's "label workers only" stance is the cleanest defense.
+
+### PVC Pending — no schedulable replica
+
+```bash
+kubectl get pvc <name> -o jsonpath='{.status.phase}'   # Pending
+kubectl describe pvc <name> | tail -20
+# Common message: "failed to schedule replicas... no available node"
+```
+
+**Diagnostic**:
+```bash
+kubectl -n longhorn-system get nodes.longhorn.io -o json \
+  | jq -r '.items[] | "\(.metadata.name): allowScheduling=\(.spec.allowScheduling) ready=\(.status.conditions[]|select(.type=="Ready")|.status) schedulable=\(.status.conditions[]|select(.type=="Schedulable")|.status)"'
+```
+
+Look for `allowScheduling=false` (manually disabled in UI), `ready=False` (manager pod down), or `schedulable=False` (disk full / disk Unschedulable).
+
+**Root causes + fixes**:
+- **Disk full**: `defaultSettings.storageMinimalAvailablePercentage` defaults to 25, we set it to 10 — but a 50 GiB volume still becomes Unschedulable below 5 GiB free. Free space or grow the volume (see do-bring-up.md "Resize later").
+- **Worker drained or NotReady**: `kubectl get nodes` to confirm. PVC waits for replica anti-affinity (HARD) to find 3 distinct workers. If only 2 workers are Ready, a new 3-replica volume can't bind. Either restore the third worker, or temporarily reduce `defaultClassReplicaCount` (NOT recommended for production data).
+- **Disk Unschedulable due to mount loss**: see [Worker boot blocked by Longhorn mount](#worker-boot-blocked-by-longhorn-mount). If `/var/lib/longhorn` lost its mount, the Longhorn Node CR shows the disk Unschedulable.
+
+**Portability**: Universal. Same diagnostic on any substrate.
+
+### longhorn_disk_prep: device missing
+
+```
+TASK [longhorn_disk_prep : fail if dedicated Longhorn device is missing] *******
+fatal: [do-nyc3-rke2-demo-worker-02]: FAILED! => Dedicated Longhorn device
+/dev/disk/by-id/scsi-0DO_Volume_*-longhorn does not exist on
+do-nyc3-rke2-demo-worker-02.
+```
+
+**Root cause**: Tofu didn't attach the volume (apply failed, volume detached out-of-band, or volume renamed). OR the inventory has a stale `longhorn_device` value.
+
+**Fix**:
+```bash
+# 1. Confirm Tofu state shows the volume attached:
+make -C terraform output worker_longhorn_devices
+# Verify the worker that failed has a non-empty value.
+
+# 2. SSH the worker, confirm the device:
+ssh <worker> 'ls -l /dev/disk/by-id/scsi-0DO_Volume_*-longhorn'
+
+# 3. If missing on the worker: re-attach via DO UI or `tofu apply` (the volume_attachment resource).
+# 4. If Tofu output is empty: re-run `make -C terraform apply` to provision the missing volume.
+# 5. Regenerate inventory so render-inventory.py picks up the fresh output:
+make -C ansible inventory
+```
+
+**Portability**: Bare metal — same role, different device path source (operator-curated, not Tofu output). The Ansible assertion still fails fast with the same actionable message.
+
+### longhorn_disk_prep: non-matching filesystem
+
+```
+TASK [longhorn_disk_prep : refuse to wipe a non-matching filesystem] ***********
+fatal: [<worker>]: FAILED! => /dev/disk/by-id/scsi-... has an existing
+filesystem of type "xfs", not "ext4". Refusing to wipe automatically.
+```
+
+**Root cause**: The dedicated volume already has a filesystem of the wrong type (e.g., previously mkfs'd as xfs, or had a Longhorn V2 raw layout in a previous test). The role intentionally refuses to wipe without explicit operator consent.
+
+**Decision tree**:
+- **Data is disposable** (most common during cluster tear-downs):
+  ```bash
+  ssh <worker> 'wipefs -a /dev/disk/by-id/scsi-0DO_Volume_*-longhorn'
+  # Re-run the play:
+  make -C ansible play
+  ```
+- **Data is real**: change `longhorn_filesystem` in `ansible/roles/longhorn_disk_prep/defaults/main.yml` to match the existing FS (`xfs`). The role's mount task will then accept the existing FS without mkfs.
+
+**Portability**: Universal — the role's guardrail logic is provider-agnostic.
+
+### Worker boot blocked by Longhorn mount
+
+If a worker fails to boot after Longhorn was enabled:
+
+```
+A start job is running for /var/lib/longhorn
+[FAILED] Failed to mount /var/lib/longhorn
+You are in emergency mode.
+```
+
+**Root cause**: The DO volume was detached or renamed *after* fstab was written. Without `nofail`, systemd waits indefinitely or drops to emergency mode.
+
+**Fix landed**: the role writes the fstab entry with `defaults,nofail,noatime`. `nofail` means a missing volume produces a degraded-but-bootable worker. If you're hitting this symptom, the role was modified without `nofail` — restore it:
+
+```bash
+ssh <worker>
+grep longhorn /etc/fstab
+# Expect opts column to include nofail.
+# If not, edit and reboot.
+```
+
+**While the worker is up but the mount is gone**: Longhorn's Node CR shows the disk Unschedulable. The Volume becomes Degraded (replica missing) but stays R/W from the other 2 workers. Operator action:
+
+```bash
+# 1. Reattach or recreate the DO volume.
+# 2. Re-run the play to mkfs + mount:
+make -C ansible play
+# 3. Longhorn auto-rebuilds the missing replica within minutes.
+```
+
+**Portability**: Universal. `nofail` is a standard systemd-fstab option; bare-metal workers benefit equally.
+
+### Encrypted SC removed
+
+```bash
+kubectl get sc
+# Expected: `longhorn (default)`. NO `longhorn-crypto-global`.
+```
+
+If a workload expects `longhorn-crypto-global`, it's a leftover from the upstream `fluxcd-template` vendor pattern. Reason it was removed: the upstream-shipped `*.helm_secrets.yaml` for the encrypted SC was encrypted with the upstream maintainer's key — we have no decryption path for it. Rather than vendor a half-working SC, [proposal v2](../openspec/changes/enable-longhorn/proposal.md) cleaned it out.
+
+**Fix** for workloads that need encryption-at-rest: file a new openspec proposal that designs the key-management story explicitly (operator-managed age/LUKS key, key rotation, what cluster components access plaintext, etc.). Do NOT re-vendor the upstream `longhorn-crypto.sc.yaml` blind.
+
+**Portability**: Same on bare metal — the encryption-at-rest decision is independent of substrate.
+
+---
+
 ## Pipefail
 
 If a wrapper script reports exit 0 despite the wrapped command obviously failing:
@@ -526,7 +711,7 @@ A future cluster running CPs on Hivelocity VPS and workers on bare metal will sh
 | `digitalocean_loadbalancer` (internal kube-API LB) | HAProxy on a VPS, or a hardware LB, or kube-vip in-cluster | DO's internal LB is one option; on BM you'd usually run HAProxy on a dedicated VPS or use kube-vip for the control plane. |
 | `digitalocean-cloud-controller-manager` (CCM) | **MetalLB** for LoadBalancer Service provisioning. Possibly **kube-vip** for control-plane VIP. No node-side provider integration. | The big simplification: no providerID-from-cloud, no zone labels, no LB provisioning by CCM. Tradeoff: no rich cloud metadata. |
 | `cloud-provider-name: external` in RKE2 config | `""` (empty / unset) — RKE2 manages its own provider integration (none) | Without CCM, leave it empty. Kubelet `--cloud-provider=external` also empty. |
-| DO Block Storage volumes (50GB attached, per #11/#12) | Dedicated raw partitions/disks per BM worker | Longhorn's storage model is the same; the substrate provisioning differs. |
+| DO Block Storage volumes (50GB attached, per #11/#12) | Dedicated raw partitions/disks per BM worker | Longhorn's storage model is the same; the substrate provisioning differs. The `longhorn_disk_prep` role's mkfs+mount+label+annotate logic ports directly — only `longhorn_device` host_var sourcing changes (operator-curated inventory instead of Tofu output via `render-inventory.py`). |
 
 ### Things that DO carry over
 
@@ -543,7 +728,7 @@ A future cluster running CPs on Hivelocity VPS and workers on bare metal will sh
 ### New problems likely on bare-metal worker side
 
 - **PXE/network-boot reliability** — outside scope of this doc but a recurring class of issues.
-- **Disk identification stability** — `/dev/sd*` names rotate on reboot; use `/dev/disk/by-id/` or by-uuid. Longhorn's per-node disk config needs stable paths.
+- **Disk identification stability** — `/dev/sd*` names rotate on reboot; use `/dev/disk/by-id/` or by-uuid. Longhorn's per-node disk config needs stable paths. The DO pattern of `/dev/disk/by-id/scsi-0DO_Volume_<name>` has no direct bare-metal analogue; use `/dev/disk/by-id/wwn-<world-wide-name>` or `/dev/disk/by-uuid/<post-mkfs-uuid>`. `longhorn_disk_prep` already uses UUID for the fstab entry (post-mkfs), so the mount is stable across reboots regardless of which by-id path the operator supplies in inventory.
 - **IPMI / BMC management** — for power-cycle, console access. Plan operator workflow.
 - **No automatic node-replacement** — losing a worker is more work than DO destroy+apply. Plan capacity headroom.
 
@@ -654,5 +839,6 @@ watch -n 5 '
 | docs | #55 | #43 | LB-type migration recipe in install-do-ccm runbook |
 | cert-manager | #54 | #52 | `letsencrypt-staging` ClusterIssuer for repeated test certs |
 | docs | #34 | #25 (validation) | install-do-ccm v3 proposal → archived 2026-05-17 |
+| Longhorn | (Group 1 PR) | Phase 3c tracking issue | enable-longhorn proposal v2 — V1 filesystem mode, hard-isolation via opt-in labels, Ansible `longhorn_disk_prep` role, removal of upstream-encrypted `longhorn-crypto-global` SC |
 
-Last updated: 2026-05-17 after test #8.
+Last updated: 2026-05-17 after test #8 + Longhorn Group 1 enablement.
