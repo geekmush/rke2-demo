@@ -89,6 +89,41 @@
           flannel:
             iface: "{{ rke2_canal_flannel_iface }}"
 
+# install-do-ccm v3 sets `cloud-provider-name: external`, which causes RKE2
+# kubelets to taint every node with node.cloudprovider.kubernetes.io/uninitialized
+# until DigitalOcean's CCM untaints them. CoreDNS doesn't tolerate this taint
+# by default and sits Pending -- which breaks Flux's source-controller (it can't
+# resolve github.com without cluster DNS), which prevents CCM from being applied,
+# which means nothing ever untaints. Classic deadlock.
+#
+# Adding the toleration here lets coredns schedule on the tainted nodes during
+# the bring-up window. Once CCM lands and untaints, the toleration is inert
+# (no taint to tolerate). See issue #42 (and #36 for the analogous fix on
+# Flux's own controllers).
+#
+# Same file-placement rule as the Canal config above: this MUST be in place
+# BEFORE rke2-server.service first starts, because RKE2's helm-controller
+# only consults the manifests directory at startup.
+- name: configure CoreDNS to tolerate the uninitialized cloud-provider taint
+  ansible.builtin.copy:
+    dest: /var/lib/rancher/rke2/server/manifests/rke2-coredns-config.yaml
+    owner: root
+    group: root
+    mode: '0600'
+    content: |
+      ---
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChartConfig
+      metadata:
+        name: rke2-coredns
+        namespace: kube-system
+      spec:
+        valuesContent: |-
+          tolerations:
+            - key: node.cloudprovider.kubernetes.io/uninitialized
+              operator: Exists
+              effect: NoSchedule
+
 - name: write rke2 server config
   ansible.builtin.template:
     src: config.yaml.j2
