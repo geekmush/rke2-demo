@@ -95,7 +95,45 @@ curl -v https://canary.escapekey.org 2>&1 | grep -E "(issuer|HTTP/|cert+dns)"
 # expect: HTTP/2 200, "cert+dns canary OK" payload, issuer "C=US, O=Let's Encrypt, CN=R<N>"
 ```
 
-Tear down the canary:
+### Troubleshooting: A record never appears at DO (issue #44 workaround)
+
+If the canary cert issues fine but `dig` returns nothing for `canary.escapekey.org` after several minutes — and external-dns logs say `"All records are already up to date"` — you've hit the orphan-TXT-marker bug ([issue #44](https://github.com/geekmush/do-nyc3-rke2-demo/issues/44)). external-dns thinks it owns the record because the heritage-tagged TXT marker exists at DO from a prior test cycle, even though the corresponding A record doesn't. Its diff logic doesn't detect the mismatch and never creates the A.
+
+Workaround: delete the orphan TXT marker(s) at DO via the API. Once gone, external-dns's next reconcile (~1 min per [`apps/external-dns/values.yaml`](../../apps/external-dns/values.yaml)) sees actual=empty, desired={A canary + TXT a-canary}, creates both.
+
+```bash
+# Decrypt the DO token from secrets:
+DO_TOKEN=$(sops -d terraform/environments/do-test/secrets.enc.tfvars \
+  | grep -E '^do_token\s*=' | sed -E 's/^do_token\s*=\s*"([^"]+)".*/\1/')
+
+# List all heritage-tagged TXT records (external-dns markers) in the zone:
+curl -sS -H "Authorization: Bearer $DO_TOKEN" \
+  "https://api.digitalocean.com/v2/domains/escapekey.org/records?type=TXT&per_page=200" \
+  | jq -r '.domain_records[] | select(.data | contains("heritage=external-dns")) | "\(.id)\t\(.name)\t\(.data)"'
+
+# Delete a specific orphan by ID (substitute the ID from the list above):
+# curl -X DELETE -H "Authorization: Bearer $DO_TOKEN" \
+#   "https://api.digitalocean.com/v2/domains/escapekey.org/records/<ID>"
+
+# Or: delete ALL external-dns-managed TXT records in the zone (safe when
+# no production workloads are using external-dns at this DNS provider --
+# external-dns will recreate the ones for currently-deployed Ingresses
+# within ~1 min after the deletes complete):
+curl -sS -H "Authorization: Bearer $DO_TOKEN" \
+  "https://api.digitalocean.com/v2/domains/escapekey.org/records?type=TXT&per_page=200" \
+  | jq -r '.domain_records[] | select(.data | contains("heritage=external-dns")) | .id' \
+  | while read id; do
+      curl -sS -X DELETE -H "Authorization: Bearer $DO_TOKEN" \
+        "https://api.digitalocean.com/v2/domains/escapekey.org/records/$id"
+    done
+
+# Then watch external-dns reconcile:
+kubectl -n external-dns logs deploy/external-dns -f | grep -E "record|canary"
+```
+
+If you'd rather use the DigitalOcean web UI: Networking → Domains → escapekey.org → find `a-canary` (or similar `a-<host>`) TXT entries → delete.
+
+### Tear down
 
 ```bash
 kubectl delete ingress,svc,deploy dns-cert-canary -n default
