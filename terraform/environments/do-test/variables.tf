@@ -84,3 +84,54 @@ variable "do_project_name" {
   default     = "RKE2"
 }
 
+# --- S3-compatible object store (see openspec/changes/enable-s3-object-store/) ---
+
+variable "object_store_provider" {
+  description = "Which S3-compatible object-store module to instantiate. Phase 3 = do_spaces (this repo). Phase 4 = wasabi (Hivelocity prod; module to be added). The shape of buckets, endpoint, and credentials is identical across providers."
+  type        = string
+  default     = "do_spaces"
+
+  validation {
+    condition     = contains(["do_spaces", "wasabi"], var.object_store_provider)
+    error_message = "object_store_provider must be one of: do_spaces, wasabi."
+  }
+}
+
+variable "object_store_region" {
+  description = "Region slug for the object-store buckets. For DO Spaces, must be a Spaces-supporting region (a subset of droplet regions). Defaults to the droplet region for co-location."
+  type        = string
+  default     = "nyc3"
+}
+
+variable "etcd_snapshot_retention_days" {
+  description = "Lifecycle policy: delete etcd-snapshot objects older than this many days. Default 7 — RKE2's own snapshot-count retention is the primary control; this is a backstop. Operator-tunable."
+  type        = number
+  default     = 7
+}
+
+variable "longhorn_backup_retention_days" {
+  description = "Lifecycle policy: delete longhorn-backup objects older than this many days. Default 30 — application-data retention; operator-tunable."
+  type        = number
+  default     = 30
+}
+
+# Credentials live in secrets.enc.tfvars (SOPS-encrypted). The operator
+# creates the Spaces access key in the DO control panel and pastes it
+# into the encrypted .tfvars file. NOT Tofu-managed — rotating a
+# Tofu-managed credential implies a `tofu apply` that itself uses the
+# credential to authenticate (chicken-and-egg).
+
+variable "object_store_access_key" {
+  description = "S3-compatible access key ID. For DO Spaces: created in DO control panel under API > Spaces Keys. Sensitive — sourced from secrets.enc.tfvars."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "object_store_secret_key" {
+  description = "S3-compatible secret access key. Paired with object_store_access_key. Sensitive — sourced from secrets.enc.tfvars."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
