@@ -104,6 +104,10 @@ Expected resource counts on a clean apply:
 - 1 × `digitalocean_firewall`
 - 6 × `digitalocean_droplet` (3 CP + 3 worker)
 - 1 × `digitalocean_project_resources` (if `do_project_name` is set)
+- 3 × `digitalocean_spaces_bucket` (if `object_store_provider == "do_spaces"` — default; see [`s3-object-store-enablement.md`](s3-object-store-enablement.md))
+- 2 × `digitalocean_spaces_bucket_lifecycle_configuration` (etcd-snapshots + longhorn-backups; tofu-state has none)
+
+If the spaces module is enabled (default), the Spaces access key must exist in `secrets.enc.tfvars` BEFORE `make apply` — operator-created in the DO control panel per the s3-object-store runbook.
 
 Review the plan output carefully before applying. In particular: confirm VPC CIDR, region, droplet sizes, and that the firewall rules match the access model (SSH 22 to `0.0.0.0/0`, everything else VPC-internal).
 
@@ -171,7 +175,7 @@ If `lsblk` shows a filesystem or mount on the new disk *before* `make play`, som
 
 **Resize later (non-destructive):** bump `var.longhorn_volume_size_gb` in `terraform/environments/do-test/terraform.tfvars`; `make apply`. DO grows the volume in place. On each worker: `sudo resize2fs /dev/disk/by-id/scsi-0DO_Volume_*-longhorn`. Longhorn re-discovers the new capacity on its next reconcile.
 
-**Destroy semantics:** `make -C terraform destroy` removes the volumes too. Once Longhorn is installed and holding data, that data is **gone** with the volumes (no S3 backup target wired up yet — see [`docs/runbooks/longhorn-enablement.md`](longhorn-enablement.md) deferred work). For end-to-end Longhorn enablement see that runbook + the [`docs/diagrams/longhorn-topology.md`](../diagrams/longhorn-topology.md) diagram.
+**Destroy semantics:** `make -C terraform destroy` removes the volumes too. Once Longhorn is installed and holding data, that data is **gone** with the volumes (Longhorn backup target wiring is tracked under `enable-s3-object-store` PR 4 — see [`docs/runbooks/s3-object-store-enablement.md`](s3-object-store-enablement.md)). For end-to-end Longhorn enablement see [`docs/runbooks/longhorn-enablement.md`](longhorn-enablement.md) + the [`docs/diagrams/longhorn-topology.md`](../diagrams/longhorn-topology.md) diagram.
 
 ### Destroy (between sessions)
 
