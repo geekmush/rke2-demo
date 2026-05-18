@@ -34,3 +34,13 @@ ssh_pubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... operator@workstation"
 # and ansible/scripts/kube-tunnel.sh. Future state uses a Twingate connector
 # inside the VPC. No `kube_api_allowed_cidrs` variable; nothing public to
 # allowlist.
+
+# --- S3-compatible object store (enable-s3-object-store openspec) ---
+# All optional; defaults below match Phase 3 DO Spaces. Spaces credentials
+# (object_store_access_key + object_store_secret_key) live in SOPS-encrypted
+# secrets.enc.tfvars -- never plaintext here. Create the access key in the
+# DO control panel under API > Spaces Keys before first apply.
+# object_store_provider             = "do_spaces"    # Phase 4: "wasabi" (module not yet implemented)
+# object_store_region               = "nyc3"
+# etcd_snapshot_retention_days      = 7
+# longhorn_backup_retention_days    = 30

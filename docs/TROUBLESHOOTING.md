@@ -77,6 +77,10 @@ Where each stage *should* succeed:
 | `longhorn_disk_prep` refuses to wipe an existing filesystem | [longhorn_disk_prep: non-matching filesystem](#longhorn_disk_prep-non-matching-filesystem) |
 | Worker won't boot after Longhorn enabled — fstab failure | [Worker boot blocked by Longhorn mount](#worker-boot-blocked-by-longhorn-mount) |
 | `longhorn-crypto-global` StorageClass missing (expected from upstream template) | [Encrypted SC removed](#encrypted-sc-removed) |
+| `tofu apply` errors on Spaces resource — credentials missing | [S3 credentials missing](#s3-credentials-missing) |
+| Spaces bucket name collision (`409 BucketAlreadyExists`) | [Bucket name taken](#bucket-name-taken) |
+| Tofu state migration won't proceed / state lock stuck | [Tofu state lock stuck](#tofu-state-lock-stuck) |
+| Wasabi 90-day minimum charge surprise (Phase 4) | [Wasabi 90-day minimum](#wasabi-90-day-minimum) |
 
 ---
 
@@ -675,6 +679,92 @@ If a workload expects `longhorn-crypto-global`, it's a leftover from the upstrea
 **Fix** for workloads that need encryption-at-rest: file a new openspec proposal that designs the key-management story explicitly (operator-managed age/LUKS key, key rotation, what cluster components access plaintext, etc.). Do NOT re-vendor the upstream `longhorn-crypto.sc.yaml` blind.
 
 **Portability**: Same on bare metal — the encryption-at-rest decision is independent of substrate.
+
+---
+
+## S3 / object store
+
+Substrate is from `enable-s3-object-store` (Phase 3d). DO Spaces in Phase 3, Wasabi in Phase 4. Three consumers (Tofu state, etcd snapshots, Longhorn backups) all share one access key per provider. Sections below cover the operator-facing failure modes that surfaced during draft + first apply.
+
+### S3 credentials missing
+
+```
+Error: object_store_access_key / object_store_secret_key empty when planning a Spaces resource
+```
+
+OR a more cryptic provider error like:
+
+```
+Error: Error creating bucket: 403 InvalidAccessKeyId
+```
+
+**Root cause**: `secrets.enc.tfvars` doesn't have `object_store_access_key` + `object_store_secret_key` populated. Spaces resources need both. Droplet resources don't — the env intentionally keeps the credentials optional so non-Spaces work proceeds without them.
+
+**Fix**:
+```bash
+# 1. Create the Spaces key in DO control panel (API → Spaces Keys → Generate New Key).
+# 2. Add to encrypted .tfvars:
+sops terraform/environments/do-test/secrets.enc.tfvars
+# Add:
+#   object_store_access_key = "DO00ABC123..."
+#   object_store_secret_key = "...long secret..."
+# Save + exit; sops re-encrypts.
+# 3. Re-run apply.
+```
+
+**Portability**: Wasabi — same shape, Wasabi-issued keys instead. Generate them in the Wasabi console under "Access Keys."
+
+### Bucket name taken
+
+```
+Error: Error creating bucket: 409 BucketAlreadyExists
+```
+
+**Root cause**: Spaces bucket names are **globally unique across all DO accounts** (S3 namespace inheritance). Someone else (or an old account of yours) already has a bucket with the same name. The bucket name is `${cluster_name}-${consumer}` — collision on `do-nyc3-rke2-demo-tofu-state` is unlikely but possible.
+
+**Fix**: rename. Either:
+1. Change `var.project_name` in `terraform.tfvars` (also changes droplet names — high-impact).
+2. Override `var.consumers` in `terraform.tfvars` with prefixed consumer names: `consumers = ["myorg-tofu-state", "myorg-etcd-snapshots", "myorg-longhorn-backups"]`. Lower blast radius.
+
+**Portability**: Wasabi namespace is per-Wasabi-account, not globally unique — collision much less likely.
+
+### Tofu state lock stuck
+
+```
+Error: Error acquiring the state lock: lock file already exists
+```
+
+After PR 2 (state migration to S3), Tofu uses S3-native locking via `use_lockfile = true`. A lock can stick if:
+- A prior `tofu apply` was killed mid-operation (Ctrl-C, SIGKILL).
+- Network partition during the lock release phase.
+
+**Diagnose** — see who holds the lock:
+```bash
+# The lockfile is alongside the state object:
+curl -sS -u "...key:...secret" \
+  --aws-sigv4 'aws:amz:us-east-1:s3' \
+  "https://do-nyc3-rke2-demo-tofu-state.nyc3.digitaloceanspaces.com/do-test/terraform.tfstate.tflock"
+# Body contains the holder + timestamp.
+```
+
+**Fix** (only if you're sure no other operator is running Tofu):
+```bash
+tofu -chdir=terraform/environments/do-test force-unlock <LOCK_ID>
+```
+
+**Portability**: Universal — `use_lockfile = true` works against any S3-compatible backend.
+
+### Wasabi 90-day minimum
+
+(Phase 4 only — not relevant yet.)
+
+Wasabi charges for storage for a minimum of 90 days per object, even if the object is deleted earlier. Etcd snapshots taken every 6h with a 7d retention would incur ~28 charges per "deleted" snapshot under Wasabi's billing model.
+
+**Mitigation**: stretch etcd snapshot cadence + retention to align with the 90-day floor when on Wasabi. Either bump retention to 90d (more storage) or stretch cadence to weekly (fewer snapshots, longer recovery window).
+
+Adjust `etcd_snapshot_retention_days` + `etcd_snapshot_schedule` (PR 3) when switching `object_store_provider` to `wasabi`.
+
+**Portability**: DO Spaces has no equivalent floor — bill is purely usage-based.
 
 ---
 

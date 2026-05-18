@@ -14,7 +14,7 @@ devopscoop's templates cover FluxCD-managed cluster apps but do not yet ship an 
 | --- | --- | --- | --- |
 | 1 — Bring-up | 3 CP + 3 worker droplets on DO | none (deferred) | First end-to-end RKE2 install via Ansible |
 | 2 — Storage substrate | Same droplets + dedicated DO Block Storage volumes | volumes attached, not yet formatted by Longhorn | Stages disks Longhorn will claim once FluxCD installs it |
-| 3 — GitOps | Same | Longhorn V1 filesystem-mode (ext4 on dedicated DO volumes at `/var/lib/longhorn`); hard-isolated from OS disk via opt-in node labels | FluxCD vendored as subtree; manages cert-manager, ingress-nginx, external-dns, DO CCM, Longhorn, and the rest of the apps stack |
+| 3 — GitOps | Same | Longhorn V1 filesystem-mode (ext4 on dedicated DO volumes at `/var/lib/longhorn`); hard-isolated from OS disk via opt-in node labels. Phase 3d (in progress) adds DO Spaces buckets for Tofu remote state, RKE2 etcd snapshots, Longhorn backup target. | FluxCD vendored as subtree; manages cert-manager, ingress-nginx, external-dns, DO CCM, Longhorn, and the rest of the apps stack |
 | 4 — Production | Bare metal | dedicated disks | Same modules/roles, different provider |
 | 5 — Upstream | n/a | n/a | Contribute RKE2 parts to devopscoop |
 
@@ -63,10 +63,11 @@ End-to-end operator procedure:
 3. [`docs/runbooks/fluxcd-bootstrap.md`](docs/runbooks/fluxcd-bootstrap.md) — `flux bootstrap` + first reconcile of the platform components.
 4. [`docs/runbooks/install-do-ccm.md`](docs/runbooks/install-do-ccm.md) — DigitalOcean Cloud Controller Manager (LoadBalancer Service support).
 5. [`docs/runbooks/longhorn-enablement.md`](docs/runbooks/longhorn-enablement.md) — Phase 3c Longhorn enablement, verify, rollback.
+6. [`docs/runbooks/s3-object-store-enablement.md`](docs/runbooks/s3-object-store-enablement.md) — Phase 3d DO Spaces buckets (Tofu state, etcd snapshots, Longhorn backups); designed for Phase 4 swap to Wasabi.
 
 When something goes sideways: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — symptom-indexed reference from the bring-up validation arc.
 
-Diagrams: [`docs/diagrams/do-network.md`](docs/diagrams/do-network.md), [`docs/diagrams/rke2-topology.md`](docs/diagrams/rke2-topology.md), [`docs/diagrams/public-traffic-path.md`](docs/diagrams/public-traffic-path.md), [`docs/diagrams/longhorn-topology.md`](docs/diagrams/longhorn-topology.md), [`docs/diagrams/dns-migration.md`](docs/diagrams/dns-migration.md).
+Diagrams: [`docs/diagrams/do-network.md`](docs/diagrams/do-network.md), [`docs/diagrams/rke2-topology.md`](docs/diagrams/rke2-topology.md), [`docs/diagrams/public-traffic-path.md`](docs/diagrams/public-traffic-path.md), [`docs/diagrams/longhorn-topology.md`](docs/diagrams/longhorn-topology.md), [`docs/diagrams/s3-object-store-topology.md`](docs/diagrams/s3-object-store-topology.md), [`docs/diagrams/dns-migration.md`](docs/diagrams/dns-migration.md).
 
 ## Contributing
 
